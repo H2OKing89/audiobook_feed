@@ -13,7 +13,7 @@
 # After:  "Vol. 4.5" → volume 4.5 (Decimal)
 ```
 
-### ⚡ **2. Async Parallelization** 
+### ⚡ **2. Async Parallelization**
 
 - **Performance Gain**: **7-8x faster execution** (13s → 1.5s for 3 queries)
 - **Rate Limiting**: 4 requests/second (240/minute) vs previous 10/minute  
