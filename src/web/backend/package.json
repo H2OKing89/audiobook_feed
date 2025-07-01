@@ -1,0 +1,20 @@
+{
+  "name": "audiobook-feed-backend",
+  "version": "1.0.0",
+  "description": "Backend API for Audiobook Feed Generator",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "body-parser": "^1.20.2",
+    "sqlite3": "^5.1.7",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
