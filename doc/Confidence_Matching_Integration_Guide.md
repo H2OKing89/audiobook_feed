@@ -7,6 +7,7 @@ The AudioStacker project now includes a complete Node.js web backend that implem
 ## Architecture
 
 ### Dual Implementation
+
 - **Python Backend**: Original confidence-based matching in `audible.py`, `utils.py`
 - **Node.js Backend**: Complete port in `src/web/backend/matching.js`
 - **Both systems use identical logic**: Same weights, thresholds, and scoring algorithms
@@ -32,16 +33,19 @@ The AudioStacker project now includes a complete Node.js web backend that implem
 ## Confidence Scoring System
 
 ### Core Weights (Must sum to 1.0)
+
 - **Title**: 50% (0.5) - Most important factor
 - **Author**: 30% (0.3) - Very important for accuracy  
 - **Series**: 20% (0.2) - Important for series books
 
 ### Bonus Weights (Additive)
+
 - **Publisher**: 10% (0.1) - Publisher match bonus
 - **Narrator**: 10% (0.1) - Narrator match bonus
 - **Volume Recency**: 5% (0.05) - Newer volume preference
 
 ### Confidence Thresholds
+
 - **≥ 0.7**: High confidence (ready for notification)
 - **≥ 0.5**: Medium confidence (good match, may need review)
 - **< 0.5**: Low confidence (filtered out by default)
@@ -165,11 +169,13 @@ data() {
 ## Volume Matching Features
 
 ### Decimal Volume Support
+
 - Correctly distinguishes Vol. 4.5 from Vol. 4.0
 - Supports various volume formats: "Vol.", "Volume", "Book", etc.
 - Handles light novel numbering: "14 (Light Novel)"
 
 ### Volume-Aware Matching
+
 - For series books, compares base titles without volume numbers
 - Applies volume recency bonus for newer releases
 - Maintains precision with floating-point volume numbers
@@ -207,12 +213,14 @@ curl -X POST http://localhost:5005/api/match \
 ## Benefits
 
 ### For Users
+
 - **Improved Search Quality**: Intelligent filtering reduces noise
 - **Transparency**: Clear confidence scores help manual review
 - **Flexibility**: Adjustable thresholds for different use cases
 - **Visual Feedback**: Easy-to-understand confidence indicators
 
 ### For Developers
+
 - **Dual Implementation**: Choice between Python and Node.js
 - **API Integration**: RESTful endpoints for external tools
 - **Maintainability**: Single matching logic ported accurately
@@ -221,11 +229,13 @@ curl -X POST http://localhost:5005/api/match \
 ## Migration from Python-Only
 
 ### Existing Users
+
 - No changes required for Python-only usage
 - Web interface provides additional capabilities
 - Same configuration files and database format
 
 ### New Features Available
+
 - Real-time confidence adjustment
 - Visual search result analysis
 - Web-based feed management
@@ -234,12 +244,14 @@ curl -X POST http://localhost:5005/api/match \
 ## Future Enhancements
 
 ### Planned Features
+
 - **Machine Learning**: Train confidence models on user feedback
 - **Custom Weighting**: Per-user confidence weight adjustment
 - **Batch Processing**: Apply confidence matching to large datasets
 - **Analytics**: Track confidence score effectiveness over time
 
 ### Integration Opportunities
+
 - **Notification Filtering**: Use confidence scores for notification prioritization
 - **Auto-Review**: Automatically approve high-confidence matches
 - **Feed Optimization**: Suggest confidence thresholds based on feed content

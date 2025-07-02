@@ -3,7 +3,9 @@
 ## **1. Overview**
 
 This document outlines the design for a web GUI that allows users to create and manage feeds of audiobooks based on authors, series, or books. The GUI will interact with existing Python code and utilize APIs to fetch audiobook metadata. The goal is to provide a user-friendly interface for searching, selecting, and managing audiobook feeds. We will use Vue.js for the frontend and Node.js for the backend to handle API requests and feed generation. We will also utilize the existing Python code to generate the feeds. As a beginner to web development, this document serves as a learning guide and project roadmap.
- 
+
+---
+
 ## **2. Technology Stack**
 
 - **Frontend:** Vue.js 3 with Composition API

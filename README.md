@@ -94,8 +94,9 @@ AudioStacker now includes a modern web interface with confidence-based matching!
 ```
 
 The web interface will be available at:
-- **Frontend**: http://localhost:5006
-- **Backend API**: http://localhost:5005
+
+- **Frontend**: <http://localhost:5006>
+- **Backend API**: <http://localhost:5005>
 
 ### Web Features
 

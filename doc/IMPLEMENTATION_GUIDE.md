@@ -57,6 +57,8 @@ I've created scripts to make setup and running the application easier:
    ./open_web_ui.sh
    ```
 
+---
+
 ### Manual Setup and Running
 
 If you prefer to run things manually:
