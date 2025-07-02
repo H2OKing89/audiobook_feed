@@ -2,6 +2,9 @@
 
 # Start script for Audiobook Feed Generator Web UI
 
+# Get the script directory at the beginning
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+
 # Function to check if a process is running on a specific port
 check_port() {
   if netstat -tuln | grep -q ":$1 "; then
@@ -46,4 +49,8 @@ echo "- Frontend log: logs/frontend.log"
 echo ""
 echo "Opening the application in your browser..."
 # Try to open the browser automatically
-./open_web_ui.sh
+if [ -f "$SCRIPT_DIR/open_web_ui.sh" ]; then
+    "$SCRIPT_DIR/open_web_ui.sh"
+else
+    echo "Note: open_web_ui.sh not found, please manually open: http://localhost:5006"
+fi

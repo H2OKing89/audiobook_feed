@@ -81,6 +81,41 @@ database:
   vacuum_interval_days: 7       # automatically optimize the database every 7 days
 ```
 
+## 🌐 Web Interface
+
+AudioStacker now includes a modern web interface with confidence-based matching!
+
+### Quick Start
+
+```bash
+# Setup and start the web interface
+./setup_web_ui.sh
+./start_web_ui.sh
+```
+
+The web interface will be available at:
+- **Frontend**: http://localhost:5006
+- **Backend API**: http://localhost:5005
+
+### Web Features
+
+- **🔍 Smart Search**: Confidence-based matching with adjustable thresholds
+- **📊 Visual Feedback**: Confidence scores and review flags on results
+- **📋 Feed Management**: Create and manage audiobook feeds through the web
+- **📅 Export Options**: Download iCalendar and JSON exports
+- **⚙️ Advanced Controls**: Real-time confidence adjustment and filtering presets
+
+### Confidence-Based Matching
+
+The web interface implements the same sophisticated matching logic as the Python backend:
+
+- **Multi-factor scoring**: Title (50%) + Author (30%) + Series (20%) + bonuses
+- **Volume awareness**: Correctly handles Vol. 4.5 vs Vol. 4.0
+- **Review flagging**: Low confidence matches flagged for manual review
+- **Configurable thresholds**: Strict (0.7+), Balanced (0.5+), Loose (0.3+) presets
+
+For detailed information, see: [`doc/Confidence_Matching_Integration_Guide.md`](doc/Confidence_Matching_Integration_Guide.md)
+
 ## License
 
 MIT

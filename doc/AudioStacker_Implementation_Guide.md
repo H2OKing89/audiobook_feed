@@ -186,3 +186,72 @@ For automated execution, set up a scheduled task or cron job:
 # Run daily at 9:00 AM
 0 9 * * * cd /path/to/audiobook_feed && python -m src.audiostracker.main
 ```
+
+## Web Interface Integration
+
+### Node.js Backend (`src/web/backend/`)
+
+The project now includes a Node.js web backend that provides a REST API and web interface for the AudioStacker functionality.
+
+#### Key Components
+
+1. **Express API Server** (`app.js`)
+   - REST endpoints for search, feed management, and exports
+   - Integrates with Python backend via child_process
+   - Implements confidence-based matching in JavaScript
+
+2. **Confidence Matching Engine** (`matching.js`)
+   - Direct port of Python confidence-based matching logic to Node.js
+   - Fuzzy string matching using `string-similarity` library
+   - Volume-aware matching with decimal support (Vol. 4.5 vs Vol. 4)
+   - Confidence scoring with thresholds for review flagging
+
+3. **Feed Management**
+   - Persistent feed storage in JSON format
+   - CRUD operations for managing audiobook feeds
+   - Integration with Python audiobooks.yaml configuration
+
+#### API Endpoints
+
+- `POST /api/search` - Search audiobooks with confidence-based filtering
+- `POST /api/match` - Apply confidence matching to raw results
+- `GET /api/feeds` - Get all feeds
+- `POST /api/feeds` - Create/update feeds
+- `DELETE /api/feeds/:id` - Delete feeds
+- `GET /api/export/ical/:id` - Export feed as iCalendar
+- `GET /api/export/json/:id` - Export feed as JSON
+
+#### Confidence-Based Matching Features
+
+The Node.js backend implements the same confidence-based matching as the Python system:
+
+- **Multi-factor scoring**: Title (50%), Author (30%), Series (20%) + bonuses
+- **Volume awareness**: Decimal volume support (4.5 ≠ 4.0)
+- **Review flagging**: Low confidence matches (<0.7) flagged for manual review
+- **Multiple matches**: Returns ALL audiobooks above confidence threshold
+- **Configurable thresholds**: Adjustable minimum confidence levels
+
+### Vue.js Frontend (`src/web/frontend/`)
+
+1. **Search Interface**
+   - Advanced search options with confidence matching controls
+   - Real-time confidence scoring display
+   - Visual indicators for matches requiring review
+
+2. **Feed Management**
+   - Create and manage audiobook feeds
+   - Add authors, series, or individual books
+   - Export feeds to iCalendar or JSON
+
+3. **Results Display**
+   - Tabbed interface (Authors/Series/Books/Narrators)
+   - Confidence score badges on search results
+   - Filtering and sorting options
+
+#### Confidence Matching UI Features
+
+- **Matching Toggle**: Enable/disable confidence-based filtering
+- **Confidence Slider**: Adjustable minimum confidence threshold
+- **Preset Options**: Quick presets (Strict 0.7+, Balanced 0.5+, Loose 0.3+)
+- **Results Summary**: Raw vs filtered result counts
+- **Score Display**: Visual confidence scores with review flags

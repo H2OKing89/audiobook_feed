@@ -414,15 +414,65 @@ export default {
       this.createFeedDialog = true;
     },
     
-    exportFeed(feed) {
-      // In a real app, this would trigger a download
-      console.log('Exporting feed:', feed);
-      // this.$toast.info(`Exporting ${feed.name} to iCal format`);
+    async exportFeed(feed) {
+      try {
+        // Create a link to download the iCal file
+        const response = await fetch(`http://localhost:5005/api/feeds/${feed.id}/export/ical`);
+        
+        if (!response.ok) {
+          throw new Error('Export failed');
+        }
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${feed.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.ics`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        console.log(`Exported ${feed.name} to iCal format`);
+      } catch (error) {
+        console.error('Error exporting feed:', error);
+      }
     },
     
-    exportAllFeeds(format) {
-      console.log(`Exporting all feeds in ${format} format`);
-      // this.$toast.info(`Exporting all feeds to ${format.toUpperCase()} format`);
+    async exportAllFeeds(format) {
+      try {
+        let url, filename;
+        
+        if (format === 'ical') {
+          url = 'http://localhost:5005/api/feeds/export/ical';
+          filename = 'all_audiobook_feeds.ics';
+        } else if (format === 'json') {
+          url = 'http://localhost:5005/api/feeds/export/json';
+          filename = 'audiobook_feeds.json';
+        } else {
+          throw new Error('Unsupported export format');
+        }
+        
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+          throw new Error('Export failed');
+        }
+        
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(downloadUrl);
+        document.body.removeChild(a);
+        
+        console.log(`Exported all feeds to ${format.toUpperCase()} format`);
+      } catch (error) {
+        console.error('Error exporting all feeds:', error);
+      }
     },
     
     confirmDeleteFeed(feed) {

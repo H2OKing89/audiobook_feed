@@ -34,6 +34,8 @@ def get_connection():
 def init_db():
     with get_connection() as conn:
         c = conn.cursor()
+        
+        # Existing audiobooks table
         c.execute('''
             CREATE TABLE IF NOT EXISTS audiobooks (
                 asin TEXT PRIMARY KEY,
@@ -48,9 +50,33 @@ def init_db():
                 notified_channels TEXT DEFAULT '{}' -- JSON string for channel tracking
             )
         ''')
-        c.execute('CREATE INDEX IF NOT EXISTS idx_author ON audiobooks(author)')
-        c.execute('CREATE INDEX IF NOT EXISTS idx_series ON audiobooks(series, series_number)')
-        c.execute('CREATE INDEX IF NOT EXISTS idx_release ON audiobooks(release_date)')
+        
+        # New watchlist table to replace audiobooks.yaml
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS watchlist (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                author_name TEXT NOT NULL,
+                title_filter TEXT,
+                series_filter TEXT,
+                publisher_filter TEXT,
+                narrator_filter TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                active BOOLEAN DEFAULT 1,
+                UNIQUE(author_name, title_filter, series_filter)
+            )
+        ''')
+        
+        # Add indexes for better performance
+        c.execute('''
+            CREATE INDEX IF NOT EXISTS idx_watchlist_author 
+            ON watchlist(author_name)
+        ''')
+        
+        c.execute('''
+            CREATE INDEX IF NOT EXISTS idx_watchlist_active 
+            ON watchlist(active)
+        ''')
         
         # Migrate existing notified column to notified_channels if needed
         try:
@@ -241,6 +267,250 @@ def vacuum_db():
     except Exception as e:
         logging.error(f"Database VACUUM failed: {e}")
         return False
+
+# Watchlist management functions
+def get_watchlist():
+    """Get all active watchlist entries"""
+    with get_connection() as conn:
+        c = conn.cursor()
+        c.execute('''
+            SELECT id, author_name, title_filter, series_filter, 
+                   publisher_filter, narrator_filter, created_at, updated_at
+            FROM watchlist 
+            WHERE active = 1 
+            ORDER BY author_name, title_filter
+        ''')
+        return [dict(row) for row in c.fetchall()]
+
+def add_watchlist_entry(author_name, title_filter=None, series_filter=None, 
+                       publisher_filter=None, narrator_filter=None):
+    """Add a new watchlist entry"""
+    with get_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute('''
+                INSERT INTO watchlist (author_name, title_filter, series_filter, 
+                                     publisher_filter, narrator_filter, updated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ''', (author_name, title_filter, series_filter, publisher_filter, narrator_filter))
+            return c.lastrowid
+        except sqlite3.IntegrityError:
+            # Entry already exists, update it instead
+            c.execute('''
+                UPDATE watchlist 
+                SET publisher_filter = ?, narrator_filter = ?, 
+                    updated_at = CURRENT_TIMESTAMP, active = 1
+                WHERE author_name = ? AND title_filter = ? AND series_filter = ?
+            ''', (publisher_filter, narrator_filter, author_name, title_filter, series_filter))
+            return None
+
+def update_watchlist_entry(entry_id, author_name=None, title_filter=None, 
+                          series_filter=None, publisher_filter=None, narrator_filter=None):
+    """Update an existing watchlist entry"""
+    with get_connection() as conn:
+        c = conn.cursor()
+        # Build dynamic update query
+        updates = []
+        values = []
+        
+        if author_name is not None:
+            updates.append("author_name = ?")
+            values.append(author_name)
+        if title_filter is not None:
+            updates.append("title_filter = ?")
+            values.append(title_filter)
+        if series_filter is not None:
+            updates.append("series_filter = ?")
+            values.append(series_filter)
+        if publisher_filter is not None:
+            updates.append("publisher_filter = ?")
+            values.append(publisher_filter)
+        if narrator_filter is not None:
+            updates.append("narrator_filter = ?")
+            values.append(narrator_filter)
+        
+        if updates:
+            updates.append("updated_at = CURRENT_TIMESTAMP")
+            values.append(entry_id)
+            query = f"UPDATE watchlist SET {', '.join(updates)} WHERE id = ?"
+            c.execute(query, values)
+            return c.rowcount > 0
+        return False
+
+def delete_watchlist_entry(entry_id):
+    """Delete (deactivate) a watchlist entry"""
+    with get_connection() as conn:
+        c = conn.cursor()
+        c.execute('''
+            UPDATE watchlist 
+            SET active = 0, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = ?
+        ''', (entry_id,))
+        return c.rowcount > 0
+
+def update_watchlist_entry_by_author(author_name, title_filter=None, series_filter=None, 
+                              publisher_filter=None, narrator_filter=None):
+    """
+    Update watchlist entry by author name.
+    
+    Args:
+        author_name (str): Author name to update
+        title_filter (str, optional): Title filter. Defaults to None.
+        series_filter (str, optional): Series filter. Defaults to None.
+        publisher_filter (str, optional): Publisher filter. Defaults to None.
+        narrator_filter (str, optional): Narrator filter. Defaults to None.
+    
+    Returns:
+        bool: True if updated successfully
+    """
+    if not author_name:
+        return False
+    
+    with get_connection() as conn:
+        c = conn.cursor()
+        
+        # Check if the entry exists
+        c.execute('SELECT id FROM watchlist WHERE author_name=?', (author_name,))
+        row = c.fetchone()
+        
+        if not row:
+            # If entry doesn't exist, add it
+            return add_watchlist_entry(author_name, title_filter, series_filter, publisher_filter, narrator_filter)
+        
+        # If it exists, update it
+        entry_id = row[0]
+        return update_watchlist_entry(entry_id, author_name, title_filter, series_filter, publisher_filter, narrator_filter)
+
+def delete_watchlist_entry_by_author(author_name):
+    """
+    Delete ALL watchlist entries for a given author name.
+    
+    Args:
+        author_name (str): Author name to delete
+    
+    Returns:
+        bool: True if one or more entries were deleted successfully
+    """
+    if not author_name:
+        return False
+    
+    with get_connection() as conn:
+        c = conn.cursor()
+        
+        # Delete all active entries for this author
+        c.execute('''
+            UPDATE watchlist 
+            SET active = 0, updated_at = CURRENT_TIMESTAMP 
+            WHERE author_name = ? AND active = 1
+        ''', (author_name,))
+        
+        # Return True if at least one row was affected
+        return c.rowcount > 0
+
+def convert_watchlist_to_yaml_format():
+    """Convert database watchlist to the old YAML format for backward compatibility"""
+    watchlist = get_watchlist()
+    result = {"audiobooks": {"author": {}}}
+    
+    for entry in watchlist:
+        author = entry['author_name']
+        if author not in result["audiobooks"]["author"]:
+            result["audiobooks"]["author"][author] = []
+        
+        book_entry = {}
+        if entry['title_filter']:
+            book_entry['title'] = entry['title_filter']
+        if entry['series_filter']:
+            book_entry['series'] = entry['series_filter']
+        if entry['publisher_filter']:
+            book_entry['publisher'] = entry['publisher_filter']
+        if entry['narrator_filter']:
+            # Handle both single narrator and list
+            if ',' in entry['narrator_filter']:
+                book_entry['narrator'] = [n.strip() for n in entry['narrator_filter'].split(',')]
+            else:
+                book_entry['narrator'] = entry['narrator_filter']
+        
+        # If no specific filters, add a generic "Any" entry
+        if not book_entry:
+            book_entry['title'] = 'Any'
+        
+        result["audiobooks"]["author"][author].append(book_entry)
+    
+    return result
+
+def check_author_exists(author_name):
+    """
+    Check if an author already exists in the watchlist.
+    
+    Args:
+        author_name (str): Author name to check
+    
+    Returns:
+        dict: Dictionary containing existence info and existing entries
+    """
+    if not author_name:
+        return {"exists": False, "entries": []}
+    
+    with get_connection() as conn:
+        c = conn.cursor()
+        c.execute('''
+            SELECT id, author_name, title_filter, series_filter, 
+                   publisher_filter, narrator_filter, created_at, updated_at
+            FROM watchlist 
+            WHERE author_name = ? AND active = 1
+            ORDER BY created_at
+        ''', (author_name,))
+        
+        entries = [dict(row) for row in c.fetchall()]
+        
+        return {
+            "exists": len(entries) > 0,
+            "entries": entries,
+            "count": len(entries)
+        }
+
+def get_author_criteria_summary(author_name):
+    """
+    Get a summary of all criteria for an existing author.
+    
+    Args:
+        author_name (str): Author name to summarize
+    
+    Returns:
+        dict: Summary of all criteria for the author, or None if author doesn't exist
+    """
+    check_result = check_author_exists(author_name)
+    if not check_result["exists"]:
+        return None
+    
+    # Combine all criteria from all entries
+    combined_criteria = {
+        "series": set(),
+        "include": set(),
+        "publisher": set(),
+        "narrator": set()
+    }
+    
+    entries = check_result["entries"]
+    for entry in entries:
+        if entry.get("title_filter"):
+            combined_criteria["include"].update(entry["title_filter"].split(","))
+        if entry.get("series_filter"):
+            combined_criteria["series"].update(entry["series_filter"].split(","))
+        if entry.get("publisher_filter"):
+            combined_criteria["publisher"].update(entry["publisher_filter"].split(","))
+        if entry.get("narrator_filter"):
+            combined_criteria["narrator"].update(entry["narrator_filter"].split(","))
+    
+    # Convert sets to sorted lists and remove empty strings
+    result = {}
+    for key, value_set in combined_criteria.items():
+        cleaned_list = sorted([v.strip() for v in value_set if v.strip()])
+        if cleaned_list:
+            result[key] = cleaned_list
+    
+    return result
 
 # Example usage (in main.py or a test script):
 if __name__ == "__main__":

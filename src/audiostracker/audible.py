@@ -19,7 +19,7 @@ except ImportError:
         from utils import retry_with_exponential_backoff, normalize_string, normalize_list, fuzzy_ratio
     except ImportError:
         # Define minimal fallback implementations
-        def retry_with_exponential_backoff(max_retries=3, retry_on_exceptions=(Exception,)):
+        def retry_with_exponential_backoff(max_retries=3, base_delay=1, max_delay=60, backoff_factor=2, jitter=True, retry_on_exceptions=(Exception,)):
             def decorator(func):
                 def wrapper(*args, **kwargs):
                     for attempt in range(max_retries):
@@ -28,7 +28,7 @@ except ImportError:
                         except retry_on_exceptions as e:
                             if attempt == max_retries - 1:
                                 raise e
-                            time.sleep(2 ** attempt)
+                        time.sleep(2 ** attempt)
                     return func(*args, **kwargs)
                 return wrapper
             return decorator

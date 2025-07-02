@@ -1,6 +1,6 @@
 import logging
-from .utils import load_yaml, validate_config, validate_audiobooks, setup_logging, merge_env_config
-from .database import init_db, insert_or_update_audiobook, prune_released, get_unnotified_for_channel, mark_notified_for_channel, vacuum_db, DB_FILE
+from .utils import load_yaml, validate_config, setup_logging, merge_env_config
+from .database import init_db, insert_or_update_audiobook, prune_released, get_unnotified_for_channel, mark_notified_for_channel, vacuum_db, DB_FILE, convert_watchlist_to_yaml_format
 from .audible import search_audible, search_audible_parallel, set_audible_rate_limit, set_language_filter, confidence, find_best_match_with_review, find_all_good_matches
 from .notify.notify import create_dispatcher
 from .ical_export import create_exporter
@@ -22,8 +22,10 @@ def main():
     setup_logging(config)
     set_audible_rate_limit(config.get('rate_limits', {}).get('audible_api_per_minute', 10))
     set_language_filter(config.get('language', 'english'))  # Set language filter from config
-    wanted = load_yaml(AUDIOBOOKS_PATH)
-    validate_audiobooks(wanted)
+    
+    # Use database watchlist instead of YAML file
+    wanted = convert_watchlist_to_yaml_format()
+    
     # Init DB
     init_db()
     
@@ -125,60 +127,70 @@ def main():
         # Process series searches for this author
         for book in books:
             if book.get('series'):
-                # Search using the book title instead of series name for better API results
-                search_query = book.get('title', book['series'])
-                logging.info(f"Searching Audible for series '{book['series']}' using query: {search_query}")
-                series_results = search_audible_parallel(search_query, search_field='title')
-                logging.info(f"Found {len(series_results)} results for query '{search_query}'")
+                # Handle comma-separated series names - search each series individually
+                series_list = book['series'].split(',') if isinstance(book['series'], str) else [book['series']]
                 
-                wanted_info = dict(book)
-                wanted_info['author'] = author_name
-                
-                # Filter results by release date first
-                future_series_results = []
-                for result in series_results:
-                    try:
-                        release = datetime.strptime(result['release_date'], '%Y-%m-%d').date()
-                    except Exception:
+                for series_name in series_list:
+                    series_name = series_name.strip()  # Remove any whitespace
+                    if not series_name:
                         continue
-                    if release >= today:
-                        future_series_results.append(result)
+                    
+                    # Search using the series name for better API results
+                    search_query = book.get('title', series_name)
+                    logging.info(f"Searching Audible for series '{series_name}' using query: {search_query}")
+                    series_results = search_audible_parallel(search_query, search_field='title')
+                    logging.info(f"Found {len(series_results)} results for series query '{search_query}'")
+                    
+                    # Create wanted_info for this specific series
+                    wanted_info = dict(book)
+                    wanted_info['author'] = author_name
+                    wanted_info['series'] = series_name  # Set to the specific series we're searching for
+                    
+                    # Filter results by release date first
+                    future_series_results = []
+                    for result in series_results:
+                        try:
+                            release = datetime.strptime(result['release_date'], '%Y-%m-%d').date()
+                        except Exception:
+                            continue
+                        if release >= today:
+                            future_series_results.append(result)
+                    
+                    if not future_series_results:
+                        continue
                 
-                if not future_series_results:
-                    continue
-                
-                # Use enhanced matching to find ALL good matches for series
-                good_series_matches = find_all_good_matches(
-                    future_series_results, 
-                    wanted_info, 
-                    MIN_CONFIDENCE, 
-                    PREFERRED_CONFIDENCE
-                )
-                
-                for best_series_match in good_series_matches:
-                    is_new = insert_or_update_audiobook(
-                        asin=best_series_match['asin'],
-                        title=best_series_match['title'],
-                        author=best_series_match['author'],
-                        narrator=best_series_match['narrator'],
-                        publisher=best_series_match['publisher'],
-                        series=best_series_match['series'],
-                        series_number=best_series_match['series_number'],
-                        release_date=best_series_match['release_date']
+                    # Use enhanced matching to find ALL good matches for series
+                    good_series_matches = find_all_good_matches(
+                        future_series_results, 
+                        wanted_info, 
+                        MIN_CONFIDENCE, 
+                        PREFERRED_CONFIDENCE
                     )
                     
-                    if best_series_match.get('needs_review', False):
-                        needs_review_books.append({
-                            'book': best_series_match,
-                            'wanted': wanted_info,
-                            'confidence': best_series_match.get('confidence_score', 0)
-                        })
-                    
-                    if is_new:
-                        logging.debug(f"Inserted new: {best_series_match['title']} (ASIN: {best_series_match['asin']}) by {best_series_match['author']} (confidence={best_series_match.get('confidence_score', 0):.2f})")
-                        all_new.append(best_series_match)
-                    else:
-                        logging.debug(f"Updated existing: {best_series_match['title']} (ASIN: {best_series_match['asin']}) by {best_series_match['author']} (confidence={best_series_match.get('confidence_score', 0):.2f})")
+                    for best_series_match in good_series_matches:
+                        is_new = insert_or_update_audiobook(
+                            asin=best_series_match['asin'],
+                            title=best_series_match['title'],
+                            author=best_series_match['author'],
+                            narrator=best_series_match['narrator'],
+                            publisher=best_series_match['publisher'],
+                            series=best_series_match['series'],
+                            series_number=best_series_match['series_number'],
+                            release_date=best_series_match['release_date']
+                        )
+                        
+                        if best_series_match.get('needs_review', False):
+                            needs_review_books.append({
+                                'book': best_series_match,
+                                'wanted': wanted_info,
+                                'confidence': best_series_match.get('confidence_score', 0)
+                            })
+                        
+                        if is_new:
+                            logging.debug(f"Inserted new series book: {best_series_match['title']} (ASIN: {best_series_match['asin']}) by {best_series_match['author']} from series '{series_name}' (confidence={best_series_match.get('confidence_score', 0):.2f})")
+                            all_new.append(best_series_match)
+                        else:
+                            logging.debug(f"Updated existing series book: {best_series_match['title']} (ASIN: {best_series_match['asin']}) by {best_series_match['author']} from series '{series_name}' (confidence={best_series_match.get('confidence_score', 0):.2f})")
     
     # Log summary of books needing review
     if needs_review_books:

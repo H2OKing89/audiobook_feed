@@ -89,6 +89,80 @@ for match in good_matches:
     insert_or_update_audiobook(match)  # All matches saved to database
 ```
 
+## 🌐 **Node.js Web Backend Integration**
+
+### **Confidence Matching Ported to JavaScript**
+
+The confidence-based matching logic has been successfully ported from Python to Node.js for use in the web backend:
+
+- **File**: `src/web/backend/matching.js`
+- **Library**: Uses `string-similarity` for fuzzy matching (equivalent to `fuzzywuzzy`)
+- **Features**: Complete feature parity with Python implementation
+
+#### **Key Features Ported**
+
+```javascript
+// Decimal volume extraction with same patterns as Python
+extractVolumeNumber(title) {
+  const volumePatterns = [
+    /vol\.?\s*(\d+(?:\.\d+)?)/,           // "Vol. 14.5"
+    /volume\s*(\d+(?:\.\d+)?)/,           // "Volume 14.5"
+    // ... all patterns from Python version
+  ];
+}
+
+// Confidence scoring with identical weights and thresholds
+calculateConfidence(result, wanted) {
+  // Core weights: title (0.5), author (0.3), series (0.2)
+  // Bonus weights: publisher (0.1), narrator (0.1), volumeRecency (0.05)
+  // Same scoring logic as Python version
+}
+```
+
+#### **Web API Integration**
+
+Enhanced search endpoint with confidence matching:
+
+```javascript
+// POST /api/search with confidence filtering
+{
+  "query": "Brandon Sanderson",
+  "searchType": "author", 
+  "useMatching": true,
+  "minConfidence": 0.5
+}
+
+// Response includes confidence metadata
+{
+  "books": [...],
+  "meta": {
+    "totalRawResults": 150,
+    "totalFilteredResults": 23,
+    "matchingEnabled": true,
+    "minConfidence": 0.5
+  }
+}
+```
+
+#### **Frontend Confidence Controls**
+
+- **Advanced Search Panel**: Toggle matching on/off, adjust confidence threshold
+- **Quick Presets**: Strict (0.7+), Balanced (0.5+), Loose (0.3+)
+- **Visual Feedback**: Confidence score badges, review flags for low-confidence matches
+- **Results Summary**: Shows raw vs filtered result counts
+
+### **Production Benefits**
+
+1. **Dual Implementation**: Both Python and Node.js versions available
+2. **Web Interface**: User-friendly confidence matching controls
+3. **API Integration**: RESTful endpoints for external integrations
+4. **Real-time Filtering**: Instant confidence-based result filtering
+5. **Visual Feedback**: Clear confidence indicators for manual review
+
+The web backend maintains the same high-performance standards as the Python implementation while providing an intuitive interface for confidence-based matching.
+
+---
+
 ## 🎯 **Real-World Impact**
 
 ### **Before**: Slow & Inaccurate

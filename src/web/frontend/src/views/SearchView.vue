@@ -37,6 +37,46 @@
           </v-btn>
         </v-col>
       </v-row>
+      
+      <!-- Advanced Matching Options -->
+      <v-expansion-panels v-model="advancedPanel" class="mt-4">
+        <v-expansion-panel title="Advanced Search Options">
+          <v-expansion-panel-text>
+            <v-row>
+              <v-col cols="12" md="4">
+                <v-switch
+                  v-model="useMatching"
+                  label="Enable Confidence-Based Matching"
+                  color="primary"
+                  hint="Use AI-powered matching to filter and rank results based on confidence scores"
+                  persistent-hint
+                ></v-switch>
+              </v-col>
+              
+              <v-col cols="12" md="4" v-if="useMatching">
+                <v-slider
+                  v-model="minConfidence"
+                  label="Minimum Confidence"
+                  min="0.1"
+                  max="1.0"
+                  step="0.1"
+                  thumb-label
+                  :hint="`Only show results with confidence ≥ ${minConfidence}`"
+                  persistent-hint
+                ></v-slider>
+              </v-col>
+              
+              <v-col cols="12" md="4" v-if="useMatching">
+                <v-chip-group v-model="selectedConfidencePreset" mandatory>
+                  <v-chip value="strict" @click="setConfidencePreset('strict')">Strict (0.7+)</v-chip>
+                  <v-chip value="balanced" @click="setConfidencePreset('balanced')">Balanced (0.5+)</v-chip>
+                  <v-chip value="loose" @click="setConfidencePreset('loose')">Loose (0.3+)</v-chip>
+                </v-chip-group>
+              </v-col>
+            </v-row>
+          </v-expansion-panel-text>
+        </v-expansion-panel>
+      </v-expansion-panels>
     </v-form>
     
     <!-- Tabs for search results -->
@@ -46,6 +86,31 @@
       <v-tab value="books">Books</v-tab>
       <v-tab value="narrators">Narrators</v-tab>
     </v-tabs>
+    
+    <!-- Search Results Summary -->
+    <v-alert v-if="hasResults && searchResults.meta" type="info" variant="tonal" class="mt-4">
+      <v-row>
+        <v-col cols="12" md="8">
+          <span v-if="searchResults.meta.matchingEnabled">
+            <strong>Confidence Matching:</strong> Found {{ searchResults.meta.totalFilteredResults }} good matches
+            from {{ searchResults.meta.totalRawResults }} raw results 
+            (minimum confidence: {{ searchResults.meta.minConfidence }})
+          </span>
+          <span v-else>
+            <strong>Raw Search:</strong> {{ searchResults.meta.totalRawResults }} results found
+          </span>
+        </v-col>
+        <v-col cols="12" md="4" class="text-right">
+          <v-chip 
+            v-if="searchResults.meta.matchingEnabled" 
+            :color="searchResults.meta.totalFilteredResults > 0 ? 'success' : 'warning'"
+            size="small"
+          >
+            {{ searchResults.meta.totalFilteredResults }} matches
+          </v-chip>
+        </v-col>
+      </v-row>
+    </v-alert>
     
     <!-- Loading indicator -->
     <div v-if="loading" class="d-flex justify-center my-10">
@@ -72,13 +137,7 @@
             <v-list-item-subtitle>Books: {{ author.bookCount || 'Unknown' }}</v-list-item-subtitle>
             
             <template v-slot:append>
-              <v-btn
-                color="primary"
-                variant="text"
-                @click="addToFeed(author, 'author')"
-              >
-                Add to Feed
-              </v-btn>
+
             </template>
           </v-list-item>
         </v-list>
@@ -107,10 +166,7 @@
               <v-btn
                 color="primary"
                 variant="text"
-                @click="addToFeed(series, 'series')"
-              >
-                Add to Feed
-              </v-btn>
+              ></v-btn>
             </template>
           </v-list-item>
         </v-list>
@@ -142,6 +198,18 @@
               <v-card-subtitle>
                 by {{ book.author }}
                 <div v-if="book.series">Series: {{ book.series }}</div>
+                <!-- Show confidence score if available -->
+                <div v-if="book.confidenceScore !== null && book.confidenceScore !== undefined" 
+                     class="mt-2">
+                  <v-chip 
+                    :color="book.needsReview ? 'warning' : 'success'" 
+                    size="small"
+                    :prepend-icon="book.needsReview ? 'mdi-alert' : 'mdi-check-circle'"
+                  >
+                    {{ (book.confidenceScore * 100).toFixed(0) }}% confidence
+                    <span v-if="book.needsReview"> (review needed)</span>
+                  </v-chip>
+                </div>
               </v-card-subtitle>
               
               <v-card-actions>
@@ -153,13 +221,7 @@
                   Details
                 </v-btn>
                 <v-spacer></v-spacer>
-                <v-btn
-                  color="primary"
-                  variant="text"
-                  @click="addToFeed(book, 'book')"
-                >
-                  Add to Feed
-                </v-btn>
+
               </v-card-actions>
             </v-card>
           </v-col>
@@ -186,18 +248,37 @@
             </v-list-item-subtitle>
             
             <template v-slot:append>
-              <v-btn
-                color="primary"
-                variant="text"
-                @click="addToFeed(narrator, 'narrator')"
-              >
-                Add to Feed
-              </v-btn>
+
             </template>
           </v-list-item>
         </v-list>
       </v-window-item>
     </v-window>
+    
+    <!-- Search Results Summary -->
+    <v-alert v-if="hasResults && searchResults.meta" type="info" variant="tonal" class="mt-4">
+      <v-row>
+        <v-col cols="12" md="8">
+          <span v-if="searchResults.meta.matchingEnabled">
+            <strong>Confidence Matching:</strong> Found {{ searchResults.meta.totalFilteredResults }} good matches
+            from {{ searchResults.meta.totalRawResults }} raw results 
+            (minimum confidence: {{ searchResults.meta.minConfidence }})
+          </span>
+          <span v-else>
+            <strong>Raw Search:</strong> {{ searchResults.meta.totalRawResults }} results found
+          </span>
+        </v-col>
+        <v-col cols="12" md="4" class="text-right">
+          <v-chip 
+            v-if="searchResults.meta.matchingEnabled" 
+            :color="searchResults.meta.totalFilteredResults > 0 ? 'success' : 'warning'"
+            size="small"
+          >
+            {{ searchResults.meta.totalFilteredResults }} matches
+          </v-chip>
+        </v-col>
+      </v-row>
+    </v-alert>
     
     <!-- No Results Message -->
     <v-alert
@@ -244,13 +325,7 @@
         
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn
-            color="primary"
-            text
-            @click="addToFeed(selectedBook, 'book')"
-          >
-            Add to Feed
-          </v-btn>
+
           <v-btn
             color="grey darken-1"
             text
@@ -262,61 +337,7 @@
       </v-card>
     </v-dialog>
     
-    <!-- Add to Feed Dialog -->
-    <v-dialog v-model="addToFeedDialog" max-width="500px">
-      <v-card>
-        <v-card-title>Add to Feed</v-card-title>
-        
-        <v-card-text>
-          <v-radio-group v-model="feedOption">
-            <v-radio label="Add to existing feed" value="existing"></v-radio>
-            <v-radio label="Create new feed" value="new"></v-radio>
-          </v-radio-group>
-          
-          <v-select
-            v-if="feedOption === 'existing'"
-            v-model="selectedFeed"
-            :items="existingFeeds"
-            item-title="name"
-            item-value="id"
-            label="Select Feed"
-            outlined
-          ></v-select>
-          
-          <div v-if="feedOption === 'new'">
-            <v-text-field
-              v-model="newFeedName"
-              label="Feed Name"
-              outlined
-            ></v-text-field>
-            <v-textarea
-              v-model="newFeedDescription"
-              label="Description (optional)"
-              outlined
-              rows="2"
-            ></v-textarea>
-          </div>
-        </v-card-text>
-        
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn
-            color="primary"
-            text
-            @click="saveFeed"
-          >
-            Save
-          </v-btn>
-          <v-btn
-            color="grey darken-1"
-            text
-            @click="addToFeedDialog = false"
-          >
-            Cancel
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+
   </div>
 </template>
 
@@ -340,23 +361,21 @@ export default {
         authors: [],
         series: [],
         books: [],
-        narrators: []
+        narrators: [],
+        meta: null
       },
       activeTab: 'authors',
       detailsDialog: false,
       selectedBook: null,
-      addToFeedDialog: false,
-      itemToAdd: null,
-      itemType: null,
-      feedOption: 'new',
-      selectedFeed: null,
-      existingFeeds: [],
-      newFeedName: '',
-      newFeedDescription: ''
+
+      // Confidence matching options
+      advancedPanel: [],
+      useMatching: true,
+      minConfidence: 0.5,
+      selectedConfidencePreset: 'balanced'
     };
   },
-  async mounted() {
-    await this.loadExistingFeeds();
+  mounted() {
   },
   computed: {
     hasResults() {
@@ -372,26 +391,21 @@ export default {
     }
   },
   methods: {
-    async loadExistingFeeds() {
-      try {
-        const response = await axios.get('http://localhost:5005/api/feeds');
-        this.existingFeeds = response.data;
-      } catch (error) {
-        console.error('Error loading existing feeds:', error);
-      }
-    },
+
     
     async searchAudiobooks() {
       if (!this.searchQuery) return;
       
       this.loading = true;
-      this.searchResults = { authors: [], series: [], books: [], narrators: [] };
+      this.searchResults = { authors: [], series: [], books: [], narrators: [], meta: null };
       
       try {
-        // Make a real API call to our backend
+        // Make a real API call to our backend with confidence matching options
         const response = await axios.post('http://localhost:5005/api/search', {
           query: this.searchQuery,
-          searchType: this.searchType
+          searchType: this.searchType,
+          useMatching: this.useMatching,
+          minConfidence: this.minConfidence
         });
         
         // Update search results with real data
@@ -430,89 +444,24 @@ export default {
       }).format(date);
     },
     
-    addToFeed(item, type) {
-      this.itemToAdd = item;
-      this.itemType = type;
-      // Refresh the feed list each time we open the dialog
-      this.loadExistingFeeds();
-      this.addToFeedDialog = true;
+
+    
+    setConfidencePreset(preset) {
+      switch (preset) {
+        case 'strict':
+          this.minConfidence = 0.7;
+          break;
+        case 'balanced':
+          this.minConfidence = 0.5;
+          break;
+        case 'loose':
+          this.minConfidence = 0.3;
+          break;
+      }
+      this.selectedConfidencePreset = preset;
     },
     
-    async saveFeed() {
-      try {
-        if (this.feedOption === 'existing') {
-          // Add to existing feed
-          if (!this.selectedFeed) {
-            console.error('No feed selected');
-            return;
-          }
-          
-          // Find the selected feed
-          const targetFeed = this.existingFeeds.find(f => f.id === this.selectedFeed);
-          if (!targetFeed) {
-            console.error('Selected feed not found');
-            return;
-          }
-          
-          // Add the new content to the feed
-          const newContent = {
-            type: this.itemType,
-            name: this.itemToAdd.name
-          };
-          
-          // Include author for series items
-          if (this.itemType === 'series' && this.itemToAdd.author) {
-            newContent.author = this.itemToAdd.author;
-          }
-          
-          targetFeed.content.push(newContent);
-          
-          // Update the feed on the backend
-          await axios.post('http://localhost:5005/api/feeds', {
-            id: targetFeed.id,
-            name: targetFeed.name,
-            description: targetFeed.description,
-            content: targetFeed.content
-          });
-          
-        } else {
-          // Create new feed
-          if (!this.newFeedName) {
-            console.error('Feed name is required');
-            return;
-          }
-          
-          const newContent = {
-            type: this.itemType,
-            name: this.itemToAdd.name
-          };
-          
-          // Include author for series items
-          if (this.itemType === 'series' && this.itemToAdd.author) {
-            newContent.author = this.itemToAdd.author;
-          }
-          
-          await axios.post('http://localhost:5005/api/feeds', {
-            name: this.newFeedName,
-            description: this.newFeedDescription,
-            content: [newContent]
-          });
-        }
-        
-        // Reset and close dialog
-        this.addToFeedDialog = false;
-        this.newFeedName = '';
-        this.newFeedDescription = '';
-        this.selectedFeed = null;
-        
-        // Refresh the feeds list
-        await this.loadExistingFeeds();
-        
-        console.log('Added to feed successfully!');
-      } catch (error) {
-        console.error('Error saving to feed:', error);
-      }
-    }
+
   }
 };
 </script>

@@ -4,18 +4,20 @@ import HomeView from '@/views/HomeView.vue';
 const routes = [
   {
     path: '/',
-    name: 'Home',
-    component: HomeView
+    name: 'Dashboard',
+    component: () => import(/* webpackChunkName: "dashboard" */ '@/views/DashboardView.vue')
   },
   {
-    path: '/search',
-    name: 'Search',
-    component: () => import(/* webpackChunkName: "search" */ '@/views/SearchView.vue')
+    path: '/database',
+    name: 'Database',
+    component: () => import(/* webpackChunkName: "database" */ '@/views/DatabaseView.vue')
   },
+
+
   {
-    path: '/feeds',
-    name: 'Feeds',
-    component: () => import(/* webpackChunkName: "feeds" */ '@/views/FeedsView.vue')
+    path: '/watchlist',
+    name: 'Watchlist',
+    component: () => import(/* webpackChunkName: "watchlist" */ '@/views/WatchlistView.vue')
   },
   {
     path: '/settings',
