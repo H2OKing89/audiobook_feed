@@ -316,31 +316,13 @@
 </template>
 
 <script>
+import axios from 'axios';
+
 export default {
   name: 'FeedsView',
   data() {
     return {
-      feeds: [
-        {
-          id: 1,
-          name: 'Fantasy Favorites',
-          description: 'My favorite fantasy authors and series',
-          content: [
-            { type: 'author', name: 'Brandon Sanderson' },
-            { type: 'series', name: 'The Stormlight Archive' },
-            { type: 'book', name: 'The Way of Kings' }
-          ]
-        },
-        {
-          id: 2,
-          name: 'Sci-Fi Collection',
-          description: 'Science fiction books I follow',
-          content: [
-            { type: 'author', name: 'Andy Weir' },
-            { type: 'series', name: 'Bobiverse', author: 'Dennis E. Taylor' }
-          ]
-        }
-      ],
+      feeds: [],
       loading: false,
       createFeedDialog: false,
       addContentDialog: false,
@@ -363,6 +345,9 @@ export default {
       }
     };
   },
+  async mounted() {
+    await this.loadFeeds();
+  },
   computed: {
     totalAuthors() {
       return this.feeds.reduce((count, feed) => {
@@ -379,6 +364,18 @@ export default {
     }
   },
   methods: {
+    async loadFeeds() {
+      this.loading = true;
+      try {
+        const response = await axios.get('http://localhost:5005/api/feeds');
+        this.feeds = response.data;
+      } catch (error) {
+        console.error('Error loading feeds:', error);
+      } finally {
+        this.loading = false;
+      }
+    },
+    
     formatFeedContent(feed) {
       const authors = feed.content.filter(item => item.type === 'author').length;
       const series = feed.content.filter(item => item.type === 'series').length;
@@ -402,13 +399,7 @@ export default {
     },
     
     refreshFeeds() {
-      this.loading = true;
-      
-      // Simulate API call
-      setTimeout(() => {
-        this.loading = false;
-        // this.$toast.success('Feeds refreshed successfully!');
-      }, 1500);
+      this.loadFeeds();
     },
     
     editFeed(feed) {
@@ -439,48 +430,52 @@ export default {
       this.deleteDialog = true;
     },
     
-    deleteFeed() {
-      // In a real app, this would make an API call
-      this.feeds = this.feeds.filter(f => f.id !== this.feedToDelete.id);
+    async deleteFeed() {
+      try {
+        await axios.delete(`http://localhost:5005/api/feeds/${this.feedToDelete.id}`);
+        await this.loadFeeds(); // Reload feeds from backend
+      } catch (error) {
+        console.error('Error deleting feed:', error);
+      }
+      
       this.deleteDialog = false;
       this.feedToDelete = null;
-      // this.$toast.success('Feed deleted successfully');
     },
     
-    saveFeed() {
+    async saveFeed() {
       if (!this.feedForm.name) {
         // this.$toast.error('Feed name is required');
         return;
       }
       
-      if (this.editingFeed) {
-        // Update existing feed
-        const index = this.feeds.findIndex(f => f.id === this.feedForm.id);
-        if (index !== -1) {
-          this.feeds[index] = {
-            ...this.feeds[index],
+      try {
+        if (this.editingFeed) {
+          // Update existing feed
+          await axios.post('http://localhost:5005/api/feeds', {
+            id: this.feedForm.id,
             name: this.feedForm.name,
             description: this.feedForm.description,
             content: this.feedForm.content
-          };
+          });
+        } else {
+          // Create new feed
+          await axios.post('http://localhost:5005/api/feeds', {
+            name: this.feedForm.name,
+            description: this.feedForm.description,
+            content: this.feedForm.content
+          });
         }
-      } else {
-        // Create new feed
-        const newFeed = {
-          id: this.feeds.length + 1,
-          name: this.feedForm.name,
-          description: this.feedForm.description,
-          content: this.feedForm.content
-        };
         
-        this.feeds.push(newFeed);
+        // Reload feeds from backend
+        await this.loadFeeds();
+        
+        // Reset form and close dialog
+        this.resetFeedForm();
+        this.createFeedDialog = false;
+        this.editingFeed = false;
+      } catch (error) {
+        console.error('Error saving feed:', error);
       }
-      
-      // Reset form and close dialog
-      this.resetFeedForm();
-      this.createFeedDialog = false;
-      // this.$toast.success(`Feed ${this.editingFeed ? 'updated' : 'created'} successfully`);
-      this.editingFeed = false;
     },
     
     resetFeedForm() {

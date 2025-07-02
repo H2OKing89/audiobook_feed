@@ -11,7 +11,37 @@ from threading import Lock
 from difflib import SequenceMatcher
 from decimal import Decimal
 import re
-from .utils import retry_with_exponential_backoff, normalize_string, normalize_list, fuzzy_ratio
+# Try relative imports first, fall back to absolute imports
+try:
+    from .utils import retry_with_exponential_backoff, normalize_string, normalize_list, fuzzy_ratio
+except ImportError:
+    try:
+        from utils import retry_with_exponential_backoff, normalize_string, normalize_list, fuzzy_ratio
+    except ImportError:
+        # Define minimal fallback implementations
+        def retry_with_exponential_backoff(max_retries=3, retry_on_exceptions=(Exception,)):
+            def decorator(func):
+                def wrapper(*args, **kwargs):
+                    for attempt in range(max_retries):
+                        try:
+                            return func(*args, **kwargs)
+                        except retry_on_exceptions as e:
+                            if attempt == max_retries - 1:
+                                raise e
+                            time.sleep(2 ** attempt)
+                    return func(*args, **kwargs)
+                return wrapper
+            return decorator
+        
+        def normalize_string(s):
+            return str(s).lower().strip() if s else ""
+        
+        def normalize_list(lst):
+            return [normalize_string(item) for item in lst] if lst else []
+        
+        def fuzzy_ratio(a, b):
+            return 100 if a == b else 0
+            
 from typing import Dict, List, Any, Optional
 
 # Global rate limit state

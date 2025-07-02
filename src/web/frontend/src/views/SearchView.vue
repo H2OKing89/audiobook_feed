@@ -350,14 +350,13 @@ export default {
       itemType: null,
       feedOption: 'new',
       selectedFeed: null,
-      existingFeeds: [
-        { name: 'Fantasy Books', id: 1 },
-        { name: 'Sci-Fi Collection', id: 2 },
-        { name: 'Mystery Thrillers', id: 3 }
-      ],
+      existingFeeds: [],
       newFeedName: '',
       newFeedDescription: ''
     };
+  },
+  async mounted() {
+    await this.loadExistingFeeds();
   },
   computed: {
     hasResults() {
@@ -373,56 +372,40 @@ export default {
     }
   },
   methods: {
+    async loadExistingFeeds() {
+      try {
+        const response = await axios.get('http://localhost:5005/api/feeds');
+        this.existingFeeds = response.data;
+      } catch (error) {
+        console.error('Error loading existing feeds:', error);
+      }
+    },
+    
     async searchAudiobooks() {
       if (!this.searchQuery) return;
       
       this.loading = true;
+      this.searchResults = { authors: [], series: [], books: [], narrators: [] };
       
       try {
-        // API call would go here
-        // For demo, we'll simulate a response
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        // Make a real API call to our backend
+        const response = await axios.post('http://localhost:5005/api/search', {
+          query: this.searchQuery,
+          searchType: this.searchType
+        });
         
-        // Simulate search results based on search type
-        if (this.searchType === 'author') {
-          this.searchResults = {
-            authors: [
-              { name: 'Brandon Sanderson', bookCount: 42 },
-              { name: 'Andy Weir', bookCount: 3 },
-              { name: 'Martha Wells', bookCount: 12 }
-            ],
-            series: [],
-            books: [],
-            narrators: []
-          };
+        // Update search results with real data
+        this.searchResults = response.data;
+        
+        // Set active tab based on which results are available
+        if (this.searchResults.authors.length > 0) {
           this.activeTab = 'authors';
-        } else if (this.searchType === 'title') {
-          this.searchResults = {
-            authors: [],
-            series: [],
-            books: [
-              { 
-                title: 'Project Hail Mary', 
-                author: 'Andy Weir', 
-                narrator: 'Ray Porter', 
-                publisher: 'Audible Studios',
-                cover: 'https://m.media-amazon.com/images/I/51Fqn4gE5HL._SL500_.jpg',
-                releaseDate: '2021-05-04',
-                summary: 'Ryland Grace is the sole survivor on a desperate, last-chance mission...'
-              },
-              { 
-                title: 'The Way of Kings', 
-                author: 'Brandon Sanderson', 
-                series: 'The Stormlight Archive',
-                seriesNumber: '1',
-                narrator: 'Michael Kramer, Kate Reading', 
-                publisher: 'Macmillan Audio',
-                cover: 'https://m.media-amazon.com/images/I/51tZz4XCvCL._SL500_.jpg'
-              }
-            ],
-            narrators: []
-          };
+        } else if (this.searchResults.series.length > 0) {
+          this.activeTab = 'series';
+        } else if (this.searchResults.books.length > 0) {
           this.activeTab = 'books';
+        } else if (this.searchResults.narrators.length > 0) {
+          this.activeTab = 'narrators';
         }
         
       } catch (error) {
@@ -450,27 +433,85 @@ export default {
     addToFeed(item, type) {
       this.itemToAdd = item;
       this.itemType = type;
+      // Refresh the feed list each time we open the dialog
+      this.loadExistingFeeds();
       this.addToFeedDialog = true;
     },
     
-    saveFeed() {
-      // In a real app, this would save to the backend
-      console.log('Saving to feed:', {
-        item: this.itemToAdd,
-        type: this.itemType,
-        feedOption: this.feedOption,
-        feedId: this.selectedFeed,
-        newFeedName: this.newFeedName,
-        newFeedDescription: this.newFeedDescription
-      });
-      
-      // Reset and close dialog
-      this.addToFeedDialog = false;
-      this.newFeedName = '';
-      this.newFeedDescription = '';
-      
-      // Show success message
-      // this.$toast.success('Added to feed successfully!');
+    async saveFeed() {
+      try {
+        if (this.feedOption === 'existing') {
+          // Add to existing feed
+          if (!this.selectedFeed) {
+            console.error('No feed selected');
+            return;
+          }
+          
+          // Find the selected feed
+          const targetFeed = this.existingFeeds.find(f => f.id === this.selectedFeed);
+          if (!targetFeed) {
+            console.error('Selected feed not found');
+            return;
+          }
+          
+          // Add the new content to the feed
+          const newContent = {
+            type: this.itemType,
+            name: this.itemToAdd.name
+          };
+          
+          // Include author for series items
+          if (this.itemType === 'series' && this.itemToAdd.author) {
+            newContent.author = this.itemToAdd.author;
+          }
+          
+          targetFeed.content.push(newContent);
+          
+          // Update the feed on the backend
+          await axios.post('http://localhost:5005/api/feeds', {
+            id: targetFeed.id,
+            name: targetFeed.name,
+            description: targetFeed.description,
+            content: targetFeed.content
+          });
+          
+        } else {
+          // Create new feed
+          if (!this.newFeedName) {
+            console.error('Feed name is required');
+            return;
+          }
+          
+          const newContent = {
+            type: this.itemType,
+            name: this.itemToAdd.name
+          };
+          
+          // Include author for series items
+          if (this.itemType === 'series' && this.itemToAdd.author) {
+            newContent.author = this.itemToAdd.author;
+          }
+          
+          await axios.post('http://localhost:5005/api/feeds', {
+            name: this.newFeedName,
+            description: this.newFeedDescription,
+            content: [newContent]
+          });
+        }
+        
+        // Reset and close dialog
+        this.addToFeedDialog = false;
+        this.newFeedName = '';
+        this.newFeedDescription = '';
+        this.selectedFeed = null;
+        
+        // Refresh the feeds list
+        await this.loadExistingFeeds();
+        
+        console.log('Added to feed successfully!');
+      } catch (error) {
+        console.error('Error saving to feed:', error);
+      }
     }
   }
 };

@@ -1,0 +1,43 @@
+[
+  {
+    "id": 1,
+    "name": "Fantasy Favorites",
+    "description": "My favorite fantasy authors and series",
+    "content": [
+      {
+        "type": "author",
+        "name": "Brandon Sanderson"
+      },
+      {
+        "type": "series",
+        "name": "The Stormlight Archive"
+      },
+      {
+        "type": "author",
+        "name": "Shirtaloon"
+      },
+      {
+        "type": "series",
+        "name": "In Another World With My Smartphone Series",
+        "author": "Patora Fuyuhara"
+      }
+    ],
+    "updatedAt": "2025-07-02T00:13:49.330Z"
+  },
+  {
+    "id": 2,
+    "name": "Sci-Fi Collection",
+    "description": "Science fiction books I follow",
+    "content": [
+      {
+        "type": "author",
+        "name": "Andy Weir"
+      },
+      {
+        "type": "series",
+        "name": "Bobiverse",
+        "author": "Dennis E. Taylor"
+      }
+    ]
+  }
+]

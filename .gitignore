@@ -17,3 +17,9 @@ data/
 *.db-journal
 .pytest_cache/
 .last_vacuum
+node_modules/
+web/frontend/node_modules/
+web/backend/node_modules/
+web/frontend/dist/
+web/frontend/.cache/
+
