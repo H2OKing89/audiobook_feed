@@ -245,6 +245,14 @@ def main():
         logging.info("No notification channels enabled")
     
     print(f"Inserted/updated {len(all_new)} future audiobooks.")
+    
+    # Return a JSON-serializable result object
+    return {
+        "status": "success",
+        "new_audiobooks": len(all_new),
+        "needs_review": len(needs_review_books),
+        "message": f"Inserted/updated {len(all_new)} future audiobooks."
+    }
 
 if __name__ == "__main__":
     main()

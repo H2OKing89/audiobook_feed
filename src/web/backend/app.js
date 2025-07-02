@@ -529,16 +529,31 @@ except Exception as e:
       console.error('Error deleting temp script:', err);
     }
     
+    // Only try to parse JSON from the last line, in case there's other output
+    const lines = dataString.trim().split('\n');
+    const lastLine = lines[lines.length - 1];
+    
     try {
-      const result = JSON.parse(dataString);
+      const result = JSON.parse(lastLine);
       res.json(result);
     } catch (e) {
       console.error('Error parsing run result:', e);
-      res.status(500).json({ 
-        error: 'Failed to parse run result', 
-        details: dataString,
-        exit_code: code 
-      });
+      console.error('Raw output:', dataString);
+      
+      // If the script ran successfully but didn't return valid JSON
+      if (code === 0) {
+        res.json({ 
+          status: "completed", 
+          message: "AudioStacker run completed successfully",
+          raw_output: dataString.substring(0, 1000) // Limit size of raw output
+        });
+      } else {
+        res.status(500).json({ 
+          error: 'Failed to run AudioStacker', 
+          details: dataString.substring(0, 1000), // Limit size of raw output
+          exit_code: code 
+        });
+      }
     }
   });
 });
