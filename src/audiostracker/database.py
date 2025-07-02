@@ -194,11 +194,11 @@ def get_unnotified_for_channel(channel: str) -> List[Dict]:
         return unnotified
 
 def prune_old_entries(days=90):
-    """Delete entries older than `days` and notified=1."""
+    """Delete entries older than `days` and already notified."""
     cutoff = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
     with get_connection() as conn:
         c = conn.cursor()
-        c.execute('DELETE FROM audiobooks WHERE notified=1 AND release_date < ?', (cutoff,))
+        c.execute("DELETE FROM audiobooks WHERE json_extract(notified_channels, '$') != '{}' AND release_date < ?", (cutoff,))
         conn.commit()
 
 def prune_released(grace_period_days: int = 0):
@@ -422,9 +422,9 @@ def convert_watchlist_to_yaml_format():
             book_entry['title'] = entry['title_filter']
         if entry['series_filter']:
             book_entry['series'] = entry['series_filter']
-        if entry['publisher_filter']:
+        if entry['publisher_filter'] and isinstance(entry['publisher_filter'], str):
             book_entry['publisher'] = entry['publisher_filter']
-        if entry['narrator_filter']:
+        if entry['narrator_filter'] and isinstance(entry['narrator_filter'], str):
             # Handle both single narrator and list
             if ',' in entry['narrator_filter']:
                 book_entry['narrator'] = [n.strip() for n in entry['narrator_filter'].split(',')]
@@ -450,7 +450,7 @@ def check_author_exists(author_name):
         dict: Dictionary containing existence info and existing entries
     """
     if not author_name:
-        return {"exists": False, "entries": []}
+        return {"exists": False, "entries": [], "count": 0}
     
     with get_connection() as conn:
         c = conn.cursor()
@@ -462,7 +462,11 @@ def check_author_exists(author_name):
             ORDER BY created_at
         ''', (author_name,))
         
-        entries = [dict(row) for row in c.fetchall()]
+        try:
+            entries = [dict(row) for row in c.fetchall()]
+        except Exception as e:
+            logging.error(f"Error processing author entries: {e}")
+            entries = []
         
         return {
             "exists": len(entries) > 0,
@@ -492,15 +496,25 @@ def get_author_criteria_summary(author_name):
         "narrator": set()
     }
     
-    entries = check_result["entries"]
+    entries = check_result.get("entries", [])
+    # Ensure entries is iterable (list, not a primitive type)
+    if not isinstance(entries, list):
+        logging.warning(f"Expected list for entries, got {type(entries)}: {entries}")
+        entries = []
+        
     for entry in entries:
-        if entry.get("title_filter"):
+        # Make sure entry is a dict before accessing its properties
+        if not isinstance(entry, dict):
+            logging.warning(f"Expected dict for entry, got {type(entry)}: {entry}")
+            continue
+            
+        if entry.get("title_filter") and isinstance(entry["title_filter"], str):
             combined_criteria["include"].update(entry["title_filter"].split(","))
-        if entry.get("series_filter"):
+        if entry.get("series_filter") and isinstance(entry["series_filter"], str):
             combined_criteria["series"].update(entry["series_filter"].split(","))
-        if entry.get("publisher_filter"):
+        if entry.get("publisher_filter") and isinstance(entry["publisher_filter"], str):
             combined_criteria["publisher"].update(entry["publisher_filter"].split(","))
-        if entry.get("narrator_filter"):
+        if entry.get("narrator_filter") and isinstance(entry["narrator_filter"], str):
             combined_criteria["narrator"].update(entry["narrator_filter"].split(","))
     
     # Convert sets to sorted lists and remove empty strings

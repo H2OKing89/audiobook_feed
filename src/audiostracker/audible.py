@@ -36,11 +36,11 @@ except ImportError:
         def normalize_string(s):
             return str(s).lower().strip() if s else ""
         
-        def normalize_list(lst):
-            return [normalize_string(item) for item in lst] if lst else []
+        def normalize_list(items):
+            return [normalize_string(item) for item in items] if items else []
         
-        def fuzzy_ratio(a, b):
-            return 100 if a == b else 0
+        def fuzzy_ratio(s1, s2):
+            return 1.0 if s1 == s2 else 0.0
             
 from typing import Dict, List, Any, Optional
 
