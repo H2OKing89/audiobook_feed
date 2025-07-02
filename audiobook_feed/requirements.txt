@@ -1,0 +1,12 @@
+requests>=2.31.0
+aiohttp>=3.9.0
+PyYAML>=6.0
+python-dotenv>=1.0.0
+pytest>=8.0.0
+pydantic>=2.5.0
+pytz>=2023.3
+fuzzywuzzy>=0.18.0
+python-Levenshtein>=0.21.0
+# For email notifications (standard library, but good to document)
+# smtplib - built-in
+# email.mime - built-in
