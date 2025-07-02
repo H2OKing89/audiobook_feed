@@ -44,10 +44,6 @@ kill_port() {
     echo "No processes found running on port $PORT"
     return 1
   fi
-  else
-    echo "No Node.js process found running on port $PORT"
-    return 1
-  fi
 }
 
 echo "Stopping frontend server (Vue.js on port 5006)..."
