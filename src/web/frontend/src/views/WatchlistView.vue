@@ -49,12 +49,12 @@
         class="watchlist-table"
       >
         <!-- Author name column -->
-        <template v-slot:item.author="{ item }">
+        <template #[`item.author`]="{ item }">
           <div class="font-weight-bold">{{ item.author }}</div>
         </template>
         
         <!-- Criteria column -->
-        <template v-slot:item.criteria="{ item }">
+        <template #[`item.criteria`]="{ item }">
           <div v-if="Object.keys(item.criteria).length === 0" class="text-caption text-medium-emphasis">
             No specific criteria - tracking all releases
           </div>
@@ -67,7 +67,7 @@
         </template>
         
         <!-- Actions column -->
-        <template v-slot:item.actions="{ item }">
+        <template #[`item.actions`]="{ item }">
           <v-btn icon size="small" color="primary" @click="editAuthor(item)">
             <v-icon>mdi-pencil</v-icon>
           </v-btn>
@@ -393,10 +393,10 @@ export default {
         }
       });
       
-      // Prepare the watchlist entry
-      const authorEntry = {
-        [this.editedItem.author]: criteria
-      };
+      // Removing unused variable
+      // const authorEntry = {
+      //   [this.editedItem.author]: criteria
+      // };
       
       try {
         if (this.isEditing) {

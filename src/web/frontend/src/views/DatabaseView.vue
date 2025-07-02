@@ -87,7 +87,7 @@
         class="elevation-1"
       >
         <!-- Title column with book info -->
-        <template v-slot:item.title="{ item }">
+        <template #[`item.title`]="{ item }">
           <div>
             <div class="font-weight-medium">{{ item.title }}</div>
             <div class="text-caption text-grey">{{ item.asin }}</div>
@@ -95,7 +95,7 @@
         </template>
 
         <!-- Author column -->
-        <template v-slot:item.author="{ item }">
+        <template #[`item.author`]="{ item }">
           <div>
             <div>{{ item.author }}</div>
             <div v-if="item.narrator" class="text-caption text-grey">
@@ -105,7 +105,7 @@
         </template>
 
         <!-- Series column -->
-        <template v-slot:item.series="{ item }">
+        <template #[`item.series`]="{ item }">
           <div v-if="item.series">
             <div>{{ item.series }}</div>
             <div v-if="item.series_number" class="text-caption">
@@ -116,7 +116,7 @@
         </template>
 
         <!-- Release Date column -->
-        <template v-slot:item.release_date="{ item }">
+        <template #[`item.release_date`]="{ item }">
           <div>
             <div>{{ formatDate(item.release_date) }}</div>
             <v-chip
@@ -129,7 +129,7 @@
         </template>
 
         <!-- Notification Status column -->
-        <template v-slot:item.notified_channels="{ item }">
+        <template #[`item.notified_channels`]="{ item }">
           <div>
             <v-chip-group v-if="Object.keys(item.notified_channels || {}).length > 0">
               <v-chip
@@ -148,9 +148,9 @@
         </template>
 
         <!-- Actions column -->
-        <template v-slot:item.actions="{ item }">
+        <template #[`item.actions`]="{ item }">
           <v-menu>
-            <template v-slot:activator="{ props }">
+            <template #activator="{ props }">
               <v-btn icon="mdi-dots-vertical" v-bind="props" size="small"></v-btn>
             </template>
             <v-list>
