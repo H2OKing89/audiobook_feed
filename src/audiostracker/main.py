@@ -85,7 +85,7 @@ def main(dry_run=False):
     
     today = datetime.now().date()  # Define today for use in filtering logic
     # Enhanced confidence thresholds
-    MIN_CONFIDENCE = 0.5    # Minimum acceptable confidence
+    MIN_CONFIDENCE = 0.45   # Minimum acceptable confidence (lowered to catch more series matches)
     PREFERRED_CONFIDENCE = 0.7  # Preferred confidence level
     all_new = []
     needs_review_books = []  # Track books that need manual review
