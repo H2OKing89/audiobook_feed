@@ -1,9 +1,22 @@
 import logging
-from .utils import load_yaml, validate_config, setup_logging, merge_env_config
-from .database import init_db, insert_or_update_audiobook, prune_released, get_unnotified_for_channel, mark_notified_for_channel, vacuum_db, DB_FILE, convert_watchlist_to_yaml_format
-from .audible import search_audible, search_audible_parallel, set_audible_rate_limit, set_language_filter, confidence, find_best_match_with_review, find_all_good_matches
-from .notify.notify import create_dispatcher
-from .ical_export import create_exporter
+import sys
+import os
+
+# Ensure the current directory is in the path so we can use absolute imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+sys.path.insert(0, os.path.dirname(__file__))
+
+from utils import load_yaml, validate_config, setup_logging, merge_env_config
+from database import init_db, insert_or_update_audiobook, prune_released, get_unnotified_for_channel, mark_notified_for_channel, vacuum_db, DB_FILE, convert_watchlist_to_yaml_format
+from audible import search_audible, search_audible_parallel, set_audible_rate_limit, set_language_filter, confidence, find_best_match_with_review, find_all_good_matches
+try:
+    from notify.notify import create_dispatcher
+except ImportError:
+    from audiostracker.notify.notify import create_dispatcher
+try:
+    from ical_export import create_exporter
+except ImportError:
+    from audiostracker.ical_export import create_exporter
 from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
@@ -12,7 +25,16 @@ CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config', 'config.yaml')
 AUDIOBOOKS_PATH = os.path.join(os.path.dirname(__file__), 'config', 'audiobooks.yaml')
 ENV_PATH = os.path.join(os.path.dirname(__file__), 'config', '.env')
 
-def main():
+def main(dry_run=False):
+    """
+    Main function to run the AudioStacker process.
+    
+    Args:
+        dry_run (bool): If True, don't insert/update the database or send notifications
+        
+    Returns:
+        dict: Results of the operation including counts and status
+    """
     # Load environment variables from .env file
     load_dotenv(ENV_PATH)
     
@@ -100,16 +122,20 @@ def main():
             )
             
             for best_match in good_matches:
-                is_new = insert_or_update_audiobook(
-                    asin=best_match['asin'],
-                    title=best_match['title'],
-                    author=best_match['author'],
-                    narrator=best_match['narrator'],
-                    publisher=best_match['publisher'],
-                    series=best_match['series'],
-                    series_number=best_match['series_number'],
-                    release_date=best_match['release_date']
-                )
+                if not dry_run:
+                    is_new = insert_or_update_audiobook(
+                        asin=best_match['asin'],
+                        title=best_match['title'],
+                        author=best_match['author'],
+                        narrator=best_match['narrator'],
+                        publisher=best_match['publisher'],
+                        series=best_match['series'],
+                        series_number=best_match['series_number'],
+                        release_date=best_match['release_date']
+                    )
+                else:
+                    is_new = True  # Assume it's new for reporting purposes
+                    logging.info(f"[DRY RUN] Would insert/update: {best_match['title']} by {best_match['author']}")
                 
                 if best_match.get('needs_review', False):
                     needs_review_books.append({
@@ -168,16 +194,20 @@ def main():
                     )
                     
                     for best_series_match in good_series_matches:
-                        is_new = insert_or_update_audiobook(
-                            asin=best_series_match['asin'],
-                            title=best_series_match['title'],
-                            author=best_series_match['author'],
-                            narrator=best_series_match['narrator'],
-                            publisher=best_series_match['publisher'],
-                            series=best_series_match['series'],
-                            series_number=best_series_match['series_number'],
-                            release_date=best_series_match['release_date']
-                        )
+                        if not dry_run:
+                            is_new = insert_or_update_audiobook(
+                                asin=best_series_match['asin'],
+                                title=best_series_match['title'],
+                                author=best_series_match['author'],
+                                narrator=best_series_match['narrator'],
+                                publisher=best_series_match['publisher'],
+                                series=best_series_match['series'],
+                                series_number=best_series_match['series_number'],
+                                release_date=best_series_match['release_date']
+                            )
+                        else:
+                            is_new = True  # Assume it's new for reporting purposes
+                            logging.info(f"[DRY RUN] Would insert/update: {best_series_match['title']} by {best_series_match['author']}")
                         
                         if best_series_match.get('needs_review', False):
                             needs_review_books.append({
@@ -204,45 +234,51 @@ def main():
     
     # Export iCal files for new audiobooks first
     ical_files = []
-    ical_exporter = create_exporter(config)
-    if config.get('ical', {}).get('enabled', False) and all_new:
-        try:
-            exported_files = ical_exporter.export_new_audiobooks(all_new)
-            if exported_files:
-                ical_files = exported_files
-                logging.info(f"Exported iCal files: {exported_files}")
-            else:
-                logging.info("No iCal files exported (no new releases)")
-        except Exception as e:
-            logging.error(f"Failed to export iCal files: {e}")
+    if not dry_run:
+        ical_exporter = create_exporter(config)
+        if config.get('ical', {}).get('enabled', False) and all_new:
+            try:
+                exported_files = ical_exporter.export_new_audiobooks(all_new)
+                if exported_files:
+                    ical_files = exported_files
+                    logging.info(f"Exported iCal files: {exported_files}")
+                else:
+                    logging.info("No iCal files exported (no new releases)")
+            except Exception as e:
+                logging.error(f"Failed to export iCal files: {e}")
+    elif config.get('ical', {}).get('enabled', False) and all_new:
+        logging.info(f"[DRY RUN] Would export iCal files for {len(all_new)} new audiobooks")
     
     # Send notifications for new audiobooks
-    dispatcher = create_dispatcher(config)
-    enabled_channels = dispatcher.get_enabled_channels()
-    
-    if enabled_channels:
-        logging.info(f"Checking for notifications across {len(enabled_channels)} channels: {enabled_channels}")
+    if not dry_run:
+        dispatcher = create_dispatcher(config)
+        enabled_channels = dispatcher.get_enabled_channels()
         
-        for channel in enabled_channels:
-            # Get audiobooks that haven't been notified for this channel
-            unnotified = get_unnotified_for_channel(channel)
+        if enabled_channels:
+            logging.info(f"Checking for notifications across {len(enabled_channels)} channels: {enabled_channels}")
             
-            if unnotified:
-                logging.info(f"Found {len(unnotified)} unnotified audiobooks for channel '{channel}'")
-                # Pass iCal files to notification if there are new audiobooks
-                success = dispatcher.send_notification(channel, unnotified, ical_files if all_new else None)
+            for channel in enabled_channels:
+                # Get audiobooks that haven't been notified for this channel
+                unnotified = get_unnotified_for_channel(channel)
                 
-                if success:
-                    # Mark all as notified for this channel
-                    for audiobook in unnotified:
-                        mark_notified_for_channel(audiobook['asin'], channel)
-                    logging.info(f"Marked {len(unnotified)} audiobooks as notified for channel '{channel}'")
+                if unnotified:
+                    logging.info(f"Found {len(unnotified)} unnotified audiobooks for channel '{channel}'")
+                    # Pass iCal files to notification if there are new audiobooks
+                    success = dispatcher.send_notification(channel, unnotified, ical_files if all_new else None)
+                    
+                    if success:
+                        # Mark all as notified for this channel
+                        for audiobook in unnotified:
+                            mark_notified_for_channel(audiobook['asin'], channel)
+                        logging.info(f"Marked {len(unnotified)} audiobooks as notified for channel '{channel}'")
+                    else:
+                        logging.error(f"Failed to send notifications to channel '{channel}'")
                 else:
-                    logging.error(f"Failed to send notifications to channel '{channel}'")
-            else:
-                logging.info(f"No unnotified audiobooks for channel '{channel}'")
+                    logging.info(f"No unnotified audiobooks for channel '{channel}'")
+        else:
+            logging.info("No notification channels enabled")
     else:
-        logging.info("No notification channels enabled")
+        logging.info(f"[DRY RUN] Would check for notifications for {len(all_new)} new audiobooks")
     
     print(f"Inserted/updated {len(all_new)} future audiobooks.")
     
@@ -251,7 +287,9 @@ def main():
         "status": "success",
         "new_audiobooks": len(all_new),
         "needs_review": len(needs_review_books),
-        "message": f"Inserted/updated {len(all_new)} future audiobooks."
+        "dry_run": dry_run,
+        "message": f"{'[DRY RUN] ' if dry_run else ''}Inserted/updated {len(all_new)} future audiobooks.",
+        "timestamp": datetime.now().isoformat()
     }
 
 if __name__ == "__main__":
