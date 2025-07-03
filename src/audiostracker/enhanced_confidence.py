@@ -10,6 +10,13 @@ from difflib import SequenceMatcher
 from .author_matching import match_authors
 from .series_analysis import SeriesVolumeAnalyzer
 
+# Import the new title and series matching
+try:
+    from .title_series_matching import titles_match, series_match, extract_volume_number
+    TITLE_SERIES_MATCHING_AVAILABLE = True
+except ImportError:
+    TITLE_SERIES_MATCHING_AVAILABLE = False
+
 class EnhancedConfidenceScorer:
     """Enhanced confidence scoring with multiple factors"""
     
@@ -50,7 +57,7 @@ class EnhancedConfidenceScorer:
         )
         scores['author_match'] = author_score
         
-        # Series matching - improved to handle more variants
+        # Series matching - use new enhanced series matching if available
         if wanted.get('series') and result.get('series'):
             # Handle cases where series might be a list or dict
             result_series = result['series']
@@ -71,91 +78,127 @@ class EnhancedConfidenceScorer:
             elif not isinstance(wanted_series, str):
                 wanted_series = str(wanted_series) if wanted_series is not None else ""
             
-            # Ensure we have strings before normalization
-            result_series_str = str(result_series) if result_series is not None else ""
-            wanted_series_str = str(wanted_series) if wanted_series is not None else ""
-            
-            normalized_result_series = self.series_analyzer.normalize_series_name(result_series_str)
-            normalized_wanted_series = self.series_analyzer.normalize_series_name(wanted_series_str)
-            
-            if normalized_result_series == normalized_wanted_series:
-                series_sim = 1.0
+            # Use enhanced series matching if available
+            if TITLE_SERIES_MATCHING_AVAILABLE:
+                series_matches, series_sim = series_match(str(result_series), str(wanted_series))
             else:
-                # Also check partial matches for longer series names
-                if len(normalized_result_series) > 10 and len(normalized_wanted_series) > 10:
-                    # Check if one is a substring of the other
-                    if (normalized_result_series in normalized_wanted_series or 
-                        normalized_wanted_series in normalized_result_series):
-                        series_sim = 0.9  # Good confidence for partial matches of long names
+                # Fallback to old logic
+                normalized_result_series = self.series_analyzer.normalize_series_name(str(result_series))
+                normalized_wanted_series = self.series_analyzer.normalize_series_name(str(wanted_series))
+                
+                if normalized_result_series == normalized_wanted_series:
+                    series_sim = 1.0
+                else:
+                    # Also check partial matches for longer series names
+                    if len(normalized_result_series) > 10 and len(normalized_wanted_series) > 10:
+                        # Check if one is a substring of the other
+                        if (normalized_result_series in normalized_wanted_series or 
+                            normalized_wanted_series in normalized_result_series):
+                            series_sim = 0.9  # Good confidence for partial matches of long names
+                        else:
+                            series_sim = SequenceMatcher(
+                                None,
+                                normalized_result_series,
+                                normalized_wanted_series
+                            ).ratio()
                     else:
                         series_sim = SequenceMatcher(
                             None,
-                            normalized_result_series,
-                            normalized_wanted_series
+                            str(result_series).lower(),
+                            str(wanted_series).lower()
                         ).ratio()
-                else:
-                    series_sim = SequenceMatcher(
-                        None,
-                        normalized_result_series,
-                        normalized_wanted_series
-                    ).ratio()
             
             scores['series_match'] = series_sim
         else:
             scores['series_match'] = 0.5  # Neutral if no series specified
         
-        # Title matching - improved to handle special cases
+        # Title matching - use enhanced title matching if available
         if wanted.get('title') and result.get('title'):
-            # Extract title without series name for better comparison
-            result_title = result.get('title', '').lower()
-            wanted_title = wanted.get('title', '').lower()
-            
-            # Remove series name from titles if possible for cleaner comparison
-            if result.get('series'):
-                # Handle series as either string or list
+            if TITLE_SERIES_MATCHING_AVAILABLE:
+                # Use the new enhanced title matching
                 result_series = result.get('series', '')
-                if isinstance(result_series, list):
-                    for series in result_series:
-                        if isinstance(series, dict) and 'title' in series:
-                            series_title = series['title'].lower()
-                            result_title = result_title.replace(series_title, '').strip()
-                elif isinstance(result_series, str):
-                    result_title = result_title.replace(result_series.lower(), '').strip()
-                    
-            if wanted.get('series'):
-                # Handle series as either string or list
                 wanted_series = wanted.get('series', '')
-                if isinstance(wanted_series, list):
-                    for series in wanted_series:
-                        if isinstance(series, dict) and 'title' in series:
-                            series_title = series['title'].lower()
-                            wanted_title = wanted_title.replace(series_title, '').strip()
-                elif isinstance(wanted_series, str):
-                    wanted_title = wanted_title.replace(wanted_series.lower(), '').strip()
                 
-            # Clean up remaining punctuation
-            result_title = re.sub(r'[,:\-_()]', ' ', result_title)
-            wanted_title = re.sub(r'[,:\-_()]', ' ', wanted_title)
-            
-            # Remove common words that don't add meaning
-            common_words = ['vol', 'volume', 'book', 'part', 'light', 'novel', 'ln']
-            for word in common_words:
-                result_title = re.sub(r'\b' + word + r'\b', '', result_title)
-                wanted_title = re.sub(r'\b' + word + r'\b', '', wanted_title)
+                # Extract series strings from complex formats
+                if isinstance(result_series, list) and result_series:
+                    result_series = result_series[0].get('title', '') if isinstance(result_series[0], dict) else str(result_series[0])
+                elif isinstance(result_series, dict) and 'title' in result_series:
+                    result_series = result_series['title']
+                else:
+                    result_series = str(result_series) if result_series else ''
+                    
+                if isinstance(wanted_series, list) and wanted_series:
+                    wanted_series = wanted_series[0].get('title', '') if isinstance(wanted_series[0], dict) else str(wanted_series[0])
+                elif isinstance(wanted_series, dict) and 'title' in wanted_series:
+                    wanted_series = wanted_series['title']
+                else:
+                    wanted_series = str(wanted_series) if wanted_series else ''
                 
-            # Clean up whitespace
-            result_title = re.sub(r'\s+', ' ', result_title).strip()
-            wanted_title = re.sub(r'\s+', ' ', wanted_title).strip()
+                title_matches, title_sim = titles_match(
+                    result.get('title', ''), 
+                    wanted.get('title', ''),
+                    threshold=0.8,
+                    series1=result_series,
+                    series2=wanted_series
+                )
+            else:
+                # Fallback to old title matching logic
+                # Extract title without series name for better comparison
+                result_title = result.get('title', '').lower()
+                wanted_title = wanted.get('title', '').lower()
+                
+                # Remove series name from titles if possible for cleaner comparison
+                if result.get('series'):
+                    # Handle series as either string or list
+                    result_series = result.get('series', '')
+                    if isinstance(result_series, list):
+                        for series in result_series:
+                            if isinstance(series, dict) and 'title' in series:
+                                series_title = series['title'].lower()
+                                result_title = result_title.replace(series_title, '').strip()
+                    elif isinstance(result_series, str):
+                        result_title = result_title.replace(result_series.lower(), '').strip()
+                        
+                if wanted.get('series'):
+                    # Handle series as either string or list
+                    wanted_series = wanted.get('series', '')
+                    if isinstance(wanted_series, list):
+                        for series in wanted_series:
+                            if isinstance(series, dict) and 'title' in series:
+                                series_title = series['title'].lower()
+                                wanted_title = wanted_title.replace(series_title, '').strip()
+                    elif isinstance(wanted_series, str):
+                        wanted_title = wanted_title.replace(wanted_series.lower(), '').strip()
+                    
+                # Clean up remaining punctuation
+                result_title = re.sub(r'[,:\-_()]', ' ', result_title)
+                wanted_title = re.sub(r'[,:\-_()]', ' ', wanted_title)
+                
+                # Remove common words that don't add meaning
+                common_words = ['vol', 'volume', 'book', 'part', 'light', 'novel', 'ln']
+                for word in common_words:
+                    result_title = re.sub(r'\b' + word + r'\b', '', result_title)
+                    wanted_title = re.sub(r'\b' + word + r'\b', '', wanted_title)
+                    
+                # Clean up whitespace
+                result_title = re.sub(r'\s+', ' ', result_title).strip()
+                wanted_title = re.sub(r'\s+', ' ', wanted_title).strip()
+                
+                # Calculate similarity
+                title_sim = SequenceMatcher(None, result_title, wanted_title).ratio()
             
-            # Calculate similarity
-            title_sim = SequenceMatcher(None, result_title, wanted_title).ratio()
             scores['title_match'] = title_sim
         else:
             scores['title_match'] = 0.7  # Neutral if no title filter
         
-        # Volume consistency - improved with special case handling
-        result_vol = self.series_analyzer.extract_volume_number(result.get('title', ''))
-        wanted_vol = self.series_analyzer.extract_volume_number(wanted.get('title', '')) if wanted.get('title') else None
+        # Volume consistency - use enhanced volume extraction if available
+        if TITLE_SERIES_MATCHING_AVAILABLE:
+            result_vol = extract_volume_number(result.get('title', ''))
+            wanted_vol = extract_volume_number(wanted.get('title', '')) if wanted.get('title') else None
+        else:
+            # Fallback to old volume extraction
+            result_vol = self.series_analyzer.extract_volume_number(result.get('title', ''))
+            wanted_vol = self.series_analyzer.extract_volume_number(wanted.get('title', '')) if wanted.get('title') else None
         
         if result_vol and wanted_vol:
             if result_vol == wanted_vol:
