@@ -9,6 +9,11 @@ fuzzywuzzy>=0.18.0
 python-Levenshtein>=0.21.0
 # For system monitoring and status information
 psutil>=5.9.0
+# For universal author matching with transliteration support
+pykakasi>=2.2.1        # Japanese romanization
+pypinyin>=0.50.0       # Chinese pinyin conversion
+unidecode>=1.3.7       # Unicode to ASCII transliteration
+rapidfuzz>=3.5.0       # Fast fuzzy string matching (optional upgrade from fuzzywuzzy)
 # For email notifications (standard library, but good to document)
 # smtplib - built-in
 # email.mime - built-in

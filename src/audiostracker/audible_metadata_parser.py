@@ -370,6 +370,9 @@ class AudibleMetadataParser:
         # Extract all patterns
         self.extract_all_patterns()
         
+        # Create series analyzer instance
+        series_analyzer = SeriesVolumeAnalyzer()
+        
         updated_count = 0
         author_updates = 0
         series_updates = 0
