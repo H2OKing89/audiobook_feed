@@ -921,7 +921,38 @@ def extract_volume_number(title: str) -> Optional[Decimal]:
     This function has been moved to utils.py for shared use.
     Importing here for backwards compatibility.
     """
-    from .utils import extract_volume_number as utils_extract_volume_number
+    try:
+        # Try relative import first
+        from .utils import extract_volume_number as utils_extract_volume_number
+    except ImportError:
+        # Fall back to absolute import if running as main module
+        try:
+            from utils import extract_volume_number as utils_extract_volume_number
+        except ImportError:
+            # If both fail, use local implementation as fallback
+            import re
+            from decimal import Decimal
+            
+            VOL_RE = re.compile(
+                r"""\b            # word-boundary
+                    (?:vol(?:ume)?\.?\s*)?   # "vol"/"volume"/"vol." (optional)
+                    (\d+(?:\.\d+)?)          # 3  |  3.5  | 10.25  etc.
+                \b""",
+                re.IGNORECASE | re.VERBOSE,
+            )
+            
+            def utils_extract_volume_number(title):
+                if not title:
+                    return None
+                
+                match = VOL_RE.search(title)
+                if match:
+                    try:
+                        return Decimal(match.group(1))
+                    except:
+                        return None
+                return None
+    
     return utils_extract_volume_number(title)
 
 def get_title_volume_key(title: str) -> str:

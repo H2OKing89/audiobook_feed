@@ -493,12 +493,19 @@ import sys
 import os
 import json
 import time
+import importlib.util
+
+# Add paths to system path
 sys.path.insert(0, '${PYTHON_PATH}')
 sys.path.insert(0, '${path.dirname(PYTHON_PATH)}')
 os.chdir('${PYTHON_PATH}')
 
 try:
-    from main import main
+    # Import main module directly from file path
+    spec = importlib.util.spec_from_file_location("main", os.path.join('${PYTHON_PATH}', 'main.py'))
+    main_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(main_module)
+    main = main_module.main
     
     # Run AudioStacker with the appropriate options
     start_time = time.time()
@@ -517,7 +524,8 @@ except Exception as e:
     print(json.dumps({
         "error": str(e), 
         "traceback": error_details,
-        "success": False
+        "success": False,
+        "error_type": str(type(e).__name__)
     }))
 `;
 
@@ -558,9 +566,11 @@ except Exception as e:
       
       if (result.error) {
         console.error('Error in Python script:', result.error);
+        console.error('Traceback:', result.traceback);
         return res.status(500).json({ 
           error: result.error, 
           details: result.traceback,
+          error_type: result.error_type,
           success: false,
           dry_run: dryRun
         });
