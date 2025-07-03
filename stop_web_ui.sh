@@ -69,23 +69,35 @@ done
 
 # If no processes found, check using port information specifically for Vue/Express
 if [ ${#WEB_UI_PIDS[@]} -eq 0 ]; then
-  echo "No web UI processes found by name, checking ports 5005 and 5007..."
+  # Get configured ports from .env files or use defaults
+  BACKEND_PORT=5005
+  FRONTEND_PORT=5007
   
-  # Check port 5005 (Express backend)
-  for PID in $(lsof -t -i:5005 -sTCP:LISTEN 2>/dev/null); do
+  if [ -f "${PWD}/src/web/backend/.env" ]; then
+    BACKEND_PORT=$(grep "PORT=" "${PWD}/src/web/backend/.env" | cut -d'=' -f2)
+  fi
+  
+  if [ -f "${PWD}/src/web/frontend/.env" ]; then
+    FRONTEND_PORT=$(grep "PORT=" "${PWD}/src/web/frontend/.env" | cut -d'=' -f2)
+  fi
+  
+  echo "No web UI processes found by name, checking ports ${BACKEND_PORT} and ${FRONTEND_PORT}..."
+  
+  # Check backend port
+  for PID in $(lsof -t -i:${BACKEND_PORT} -sTCP:LISTEN 2>/dev/null); do
     if is_web_ui_process $PID; then
       WEB_UI_PIDS+=($PID)
       CMDLINE=$(tr '\0' ' ' < /proc/$PID/cmdline 2>/dev/null | cut -c 1-80)
-      echo "✓ Found backend process $PID on port 5005: $CMDLINE..."
+      echo "✓ Found backend process $PID on port ${BACKEND_PORT}: $CMDLINE..."
     fi
   done
   
-  # Check port 5007 (Vue frontend)
-  for PID in $(lsof -t -i:5007 -sTCP:LISTEN 2>/dev/null); do
+  # Check frontend port
+  for PID in $(lsof -t -i:${FRONTEND_PORT} -sTCP:LISTEN 2>/dev/null); do
     if is_web_ui_process $PID; then
       WEB_UI_PIDS+=($PID)
       CMDLINE=$(tr '\0' ' ' < /proc/$PID/cmdline 2>/dev/null | cut -c 1-80)
-      echo "✓ Found frontend process $PID on port 5007: $CMDLINE..."
+      echo "✓ Found frontend process $PID on port ${FRONTEND_PORT}: $CMDLINE..."
     fi
   done
 fi
