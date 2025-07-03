@@ -562,103 +562,105 @@ def delete_audiobook_by_asin(asin):
         logging.error(f"Error deleting audiobook with ASIN {asin}: {e}")
         return False
 
-def get_all_audiobooks(filter_type='all', limit=1000):
-    """
-    Get all audiobooks from the database with optional filtering.
-    
-    Args:
-        filter_type (str): Filter type: 'all', 'upcoming', 'released', or 'recent'
-        limit (int): Maximum number of records to return
-        
-    Returns:
-        list: List of audiobooks as dictionaries
-    """
-    with get_connection() as conn:
-        c = conn.cursor()
-        
-        today = datetime.now().date().isoformat()
-        query = ""
-        params = []
-        
-        if filter_type == 'upcoming':
-            # Filter for books not yet released
-            query = "SELECT * FROM audiobooks WHERE date(release_date) >= ? ORDER BY release_date ASC LIMIT ?"
-            params = [today, limit]
-        elif filter_type == 'released':
-            # Filter for already released books
-            query = "SELECT * FROM audiobooks WHERE date(release_date) < ? ORDER BY release_date DESC LIMIT ?"
-            params = [today, limit]
-        elif filter_type == 'recent':
-            # Most recently added to database
-            query = "SELECT * FROM audiobooks ORDER BY last_checked DESC LIMIT ?"
-            params = [limit]
-        else:  # 'all' or any other value
-            # All books, sorted by release date (upcoming first)
-            query = "SELECT * FROM audiobooks ORDER BY release_date ASC LIMIT ?"
-            params = [limit]
-        
-        c.execute(query, params)
-        
-        # Convert rows to dictionaries
-        columns = [desc[0] for desc in c.description]
-        books = []
-        
-        for row in c.fetchall():
-            book = dict(zip(columns, row))
-            
-            # Parse JSON fields
-            if 'notified_channels' in book and book['notified_channels']:
-                try:
-                    book['notified_channels'] = json.loads(book['notified_channels'])
-                except json.JSONDecodeError:
-                    book['notified_channels'] = {}
-            
-            books.append(book)
-        
-        return books
-
 def count_audiobooks():
     """
-    Count total number of audiobooks in the database.
+    Count the total number of audiobooks in the database.
     
     Returns:
         int: Total number of audiobooks
     """
     with get_connection() as conn:
         c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM audiobooks")
+        c.execute('SELECT COUNT(*) FROM audiobooks')
         return c.fetchone()[0]
 
 def count_upcoming_audiobooks():
     """
-    Count upcoming audiobooks (release date in the future).
+    Count the number of upcoming audiobook releases.
     
     Returns:
-        int: Number of upcoming audiobooks
+        int: Number of upcoming releases (release date in the future)
     """
+    from datetime import datetime
     today = datetime.now().date().isoformat()
+    
     with get_connection() as conn:
         c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM audiobooks WHERE date(release_date) >= ?", (today,))
+        c.execute('SELECT COUNT(*) FROM audiobooks WHERE release_date > ?', (today,))
         return c.fetchone()[0]
+
+def get_all_audiobooks(filter_type='all', limit=1000):
+    """
+    Get all audiobooks from the database with optional filtering and limit.
+    
+    Args:
+        filter_type (str): Filter type ('all', 'upcoming', 'released')
+        limit (int): Maximum number of results to return
+        
+    Returns:
+        list: List of audiobooks as dictionaries
+    """
+    from datetime import datetime
+    today = datetime.now().date().isoformat()
+    
+    with get_connection() as conn:
+        c = conn.cursor()
+        
+        # Build query based on filter type
+        if filter_type == 'upcoming':
+            c.execute('''
+                SELECT * FROM audiobooks 
+                WHERE release_date > ? 
+                ORDER BY release_date ASC
+                LIMIT ?
+            ''', (today, limit))
+        elif filter_type == 'released':
+            c.execute('''
+                SELECT * FROM audiobooks 
+                WHERE release_date <= ? 
+                ORDER BY release_date DESC
+                LIMIT ?
+            ''', (today, limit))
+        else:  # 'all' or any other value
+            c.execute('''
+                SELECT * FROM audiobooks 
+                ORDER BY release_date ASC
+                LIMIT ?
+            ''', (limit,))
+        
+        # Convert rows to dictionaries
+        columns = [col[0] for col in c.description]
+        result = []
+        for row in c.fetchall():
+            book_dict = dict(zip(columns, row))
+            # Parse notified_channels JSON
+            try:
+                if book_dict.get('notified_channels'):
+                    book_dict['notified_channels'] = json.loads(book_dict['notified_channels'])
+                else:
+                    book_dict['notified_channels'] = {}
+            except (json.JSONDecodeError, TypeError):
+                book_dict['notified_channels'] = {}
+            result.append(book_dict)
+        
+        return result
 
 def get_last_checked_time():
     """
-    Get the most recent last_checked time from the database.
+    Get the timestamp of the most recently updated audiobook.
     
     Returns:
-        str: Last checked time in ISO format, or current time if no records
+        str: Timestamp of the most recent update or current time if no data
     """
     with get_connection() as conn:
         c = conn.cursor()
-        c.execute("SELECT MAX(last_checked) FROM audiobooks")
-        last_checked = c.fetchone()[0]
-        
-        if last_checked:
-            return last_checked
-        
-        # If no records found, return current time
-        return datetime.now().isoformat()
+        c.execute('SELECT MAX(last_checked) FROM audiobooks')
+        result = c.fetchone()[0]
+        if result:
+            return result
+        else:
+            from datetime import datetime
+            return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 # Example usage (in main.py or a test script):
 if __name__ == "__main__":

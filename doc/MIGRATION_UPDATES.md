@@ -2,6 +2,23 @@
 
 ## Latest Improvements
 
+### Database and System Status Fixes (July 2, 2025)
+
+1. Fixed system status API endpoint:
+   - Added missing `get_system_info` function in `utils.py`
+   - Added system information including Python version, platform, memory usage
+   - Added dependency on `psutil` for system monitoring capabilities
+
+2. Fixed database API endpoints:
+   - Added error handling for relative imports in Python modules
+   - Fixed critical issues with missing functions for database query endpoints
+   - Ensured proper data formatting for frontend consumption
+
+3. General reliability improvements:
+   - Added graceful error handling for missing dependencies
+   - Fixed module import issues causing backend failures
+   - Improved API response structure for better UI integration
+
 ### Frontend/Backend Integration Improvements
 
 1. Added API versioning:

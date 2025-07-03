@@ -11,6 +11,10 @@ from functools import wraps
 from typing import Callable, Any, Optional
 from decimal import Decimal
 import requests
+import sys
+import platform
+import psutil
+from datetime import datetime
 
 class JsonFormatter(logging.Formatter):
     def format(self, record):
@@ -227,8 +231,18 @@ def set_language_filter(language: str) -> None:
         language: Language to filter results by (e.g., "english", "spanish", "french")
     """
     # Import here to avoid circular imports
-    from .audible import set_language_filter as set_audible_language_filter
-    set_audible_language_filter(language)
+    try:
+        from .audible import set_language_filter as set_audible_language_filter
+        set_audible_language_filter(language)
+    except ImportError:
+        # If relative import fails, try absolute import
+        try:
+            from audible import set_language_filter as set_audible_language_filter
+            set_audible_language_filter(language)
+        except ImportError:
+            # If both fail, log the issue but don't crash
+            import logging
+            logging.warning(f"Could not import audible module to set language filter: {language}")
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config', 'config.yaml')
 AUDIOBOOKS_PATH = os.path.join(os.path.dirname(__file__), 'config', 'audiobooks.yaml')
@@ -288,6 +302,67 @@ def extract_volume_number(title: str) -> Optional[Decimal]:
                 continue
     
     return None
+
+def get_system_info():
+    """
+    Get system information including Python version, platform, and memory usage.
+    
+    Returns:
+        dict: Dictionary containing system information
+    """
+    import sys
+    import platform
+    try:
+        import psutil
+        psutil_available = True
+    except ImportError:
+        psutil_available = False
+    from datetime import datetime
+    
+    try:
+        # Get basic system information
+        system_info = {
+            "python_version": sys.version,
+            "platform": platform.platform(),
+            "processor": platform.processor(),
+            "hostname": platform.node(),
+            "current_time": datetime.now().isoformat(),
+        }
+        
+        if psutil_available:
+            # Get memory usage
+            virtual_memory = psutil.virtual_memory()
+            system_info["memory"] = {
+                "total": f"{virtual_memory.total / (1024 ** 3):.2f} GB",
+                "available": f"{virtual_memory.available / (1024 ** 3):.2f} GB",
+                "used": f"{virtual_memory.used / (1024 ** 3):.2f} GB",
+                "percent_used": f"{virtual_memory.percent}%"
+            }
+            
+            # Get disk usage for the current directory
+            disk_usage = psutil.disk_usage('/')
+            system_info["disk"] = {
+                "total": f"{disk_usage.total / (1024 ** 3):.2f} GB",
+                "free": f"{disk_usage.free / (1024 ** 3):.2f} GB",
+                "used": f"{disk_usage.used / (1024 ** 3):.2f} GB",
+                "percent_used": f"{disk_usage.percent}%"
+            }
+            
+            system_info["uptime"] = str(datetime.now() - datetime.fromtimestamp(psutil.boot_time()))
+        else:
+            system_info["memory"] = "psutil not available"
+            system_info["disk"] = "psutil not available"
+            system_info["uptime"] = "psutil not available"
+        
+        return system_info
+    except Exception as e:
+        # Return basic info if full system info can't be retrieved
+        return {
+            "python_version": sys.version,
+            "platform": platform.platform(),
+            "error": str(e),
+            "current_time": datetime.now().isoformat(),
+        }
 
 if __name__ == "__main__":
     try:

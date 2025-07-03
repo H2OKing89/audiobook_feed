@@ -7,6 +7,8 @@ pydantic>=2.5.0
 pytz>=2023.3
 fuzzywuzzy>=0.18.0
 python-Levenshtein>=0.21.0
+# For system monitoring and status information
+psutil>=5.9.0
 # For email notifications (standard library, but good to document)
 # smtplib - built-in
 # email.mime - built-in
