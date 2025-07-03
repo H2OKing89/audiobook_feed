@@ -201,7 +201,7 @@
 </template>
 
 <script>
-import axios from 'axios';
+import apiService from '@/services/api';
 
 export default {
   name: 'WatchlistView',
@@ -285,7 +285,7 @@ export default {
     async loadWatchlist() {
       this.loading = true;
       try {
-        const response = await axios.get('http://localhost:5005/api/audiostacker/watchlist');
+        const response = await apiService.getWatchlist();
         this.watchlist = response.data;
       } catch (error) {
         console.error('Error loading watchlist:', error);
@@ -401,14 +401,14 @@ export default {
       try {
         if (this.isEditing) {
           // Update existing entry
-          await axios.put('http://localhost:5005/api/audiostacker/watchlist', {
+          await apiService.updateWatchlist({
             author: this.editedItem.author,
             criteria
           });
           this.showSnackbar(`Updated ${this.editedItem.author} in watchlist`);
         } else {
           // Add new entry
-          const response = await axios.post('http://localhost:5005/api/audiostacker/watchlist', {
+          const response = await apiService.addToWatchlist({
             author: this.editedItem.author,
             criteria
           });
@@ -440,7 +440,7 @@ export default {
     
     async deleteAuthor() {
       try {
-        await axios.delete(`http://localhost:5005/api/audiostacker/watchlist?author=${encodeURIComponent(this.deleteItem.author)}`);
+        await apiService.removeFromWatchlist(this.deleteItem.author);
         this.showSnackbar(`Removed ${this.deleteItem.author} from watchlist`);
         await this.loadWatchlist();
         this.deleteDialog = false;

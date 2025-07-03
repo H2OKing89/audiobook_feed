@@ -262,7 +262,7 @@
 </template>
 
 <script>
-import axios from 'axios';
+import apiService from '@/services/api';
 
 export default {
   name: 'DatabaseView',
@@ -316,7 +316,7 @@ export default {
     async loadBooks() {
       this.loading = true;
       try {
-        const response = await axios.get(`http://localhost:5005/api/database?filter=${this.selectedFilter}&limit=1000`);
+        const response = await apiService.getDatabaseBooks();
         this.books = response.data.books || [];
         this.totalBooks = response.data.total || 0;
         this.filterBooks();
@@ -367,7 +367,7 @@ export default {
       if (confirm(`Are you sure you want to remove "${book.title}" from the database?`)) {
         try {
           this.loading = true;
-          const response = await axios.delete(`http://localhost:5005/api/database/${book.asin}`);
+          const response = await apiService.deleteBook(book.asin);
           
           if (response.data.success) {
             this.showSnackbar(`Successfully removed "${book.title}" from the database`);

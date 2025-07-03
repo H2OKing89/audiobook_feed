@@ -241,7 +241,7 @@
 </template>
 
 <script>
-import axios from 'axios';
+import apiService from '@/services/api';
 
 export default {
   name: 'DashboardView',
@@ -273,7 +273,7 @@ export default {
     async loadSystemStatus() {
       this.loadingStatus = true;
       try {
-        const response = await axios.get('http://localhost:5005/api/audiostacker/status');
+        const response = await apiService.getStatus();
         this.systemStatus = {
           system: response.data,
           database: {
@@ -285,7 +285,7 @@ export default {
         
         // Load database info
         try {
-          const dbResponse = await axios.get('http://localhost:5005/api/audiostacker/database');
+          const dbResponse = await apiService.getDatabaseBooks();
           this.systemStatus.database = {
             total_books: dbResponse.data.total || 0,
             upcoming_releases: dbResponse.data.cache_info?.upcoming_releases || 0,
@@ -304,7 +304,7 @@ export default {
     async loadRecentBooks() {
       this.loadingBooks = true;
       try {
-        const response = await axios.get('http://localhost:5005/api/audiostacker/database');
+        const response = await apiService.getDatabaseBooks();
         this.recentBooks = response.data.books || [];
       } catch (error) {
         console.error('Error loading recent books:', error);
@@ -317,7 +317,7 @@ export default {
     async loadWatchlist() {
       this.loadingWatchlist = true;
       try {
-        const response = await axios.get('http://localhost:5005/api/audiostacker/watchlist');
+        const response = await apiService.getWatchlist();
         this.watchlist = response.data;
       } catch (error) {
         console.error('Error loading watchlist:', error);
@@ -334,7 +334,7 @@ export default {
     async runAudioStacker(dryRun = false) {
       this.runningAudioStacker = true;
       try {
-        const response = await axios.post('http://localhost:5005/api/audiostacker/run', { dryRun });
+        const response = await apiService.runAudiostacker(dryRun);
         this.runResult = response.data;
         this.runResult.start_time = new Date().toISOString();
         this.runResult.end_time = new Date().toISOString();
