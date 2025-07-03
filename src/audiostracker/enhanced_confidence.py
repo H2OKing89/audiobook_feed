@@ -8,7 +8,7 @@ import re
 from difflib import SequenceMatcher
 
 from .author_matching import match_authors
-from .series_analysis import normalize_series_name, extract_volume_number
+from .series_analysis import SeriesVolumeAnalyzer
 
 class EnhancedConfidenceScorer:
     """Enhanced confidence scoring with multiple factors"""
@@ -18,10 +18,20 @@ class EnhancedConfidenceScorer:
             'author_match': 0.35,      # Author matching is very important
             'series_match': 0.25,      # Series matching is important
             'title_match': 0.15,       # Title similarity
-            'volume_consistency': 0.10, # Volume number consistency
-            'publisher_match': 0.05,   # Publisher consistency
+            'volume_consistency': 0.12, # Volume number consistency (increased weight)
+            'publisher_match': 0.04,   # Publisher consistency (slightly reduced)
             'narrator_match': 0.05,    # Narrator consistency
-            'release_date_logic': 0.05 # Release date makes sense
+            'release_date_logic': 0.04 # Release date makes sense (slightly reduced)
+        }
+        
+        # Create a series analyzer instance
+        self.series_analyzer = SeriesVolumeAnalyzer()
+        
+        # Thresholds for different confidence levels
+        self.thresholds = {
+            'high': 0.85,    # Very confident match
+            'medium': 0.65,  # Reasonably confident match
+            'low': 0.45      # Possible match but needs review
         }
     
     def calculate_enhanced_confidence(self, result: Dict, wanted: Dict) -> Tuple[float, Dict]:
@@ -42,8 +52,31 @@ class EnhancedConfidenceScorer:
         
         # Series matching - improved to handle more variants
         if wanted.get('series') and result.get('series'):
-            normalized_result_series = normalize_series_name(result['series'])
-            normalized_wanted_series = normalize_series_name(wanted['series'])
+            # Handle cases where series might be a list or dict
+            result_series = result['series']
+            wanted_series = wanted['series']
+            
+            # Extract series name from different formats
+            if isinstance(result_series, list) and result_series:
+                result_series = result_series[0].get('title', '') if isinstance(result_series[0], dict) else str(result_series[0])
+            elif isinstance(result_series, dict) and 'title' in result_series:
+                result_series = result_series['title']
+            elif not isinstance(result_series, str):
+                result_series = str(result_series) if result_series is not None else ""
+            
+            if isinstance(wanted_series, list) and wanted_series:
+                wanted_series = wanted_series[0].get('title', '') if isinstance(wanted_series[0], dict) else str(wanted_series[0])
+            elif isinstance(wanted_series, dict) and 'title' in wanted_series:
+                wanted_series = wanted_series['title']
+            elif not isinstance(wanted_series, str):
+                wanted_series = str(wanted_series) if wanted_series is not None else ""
+            
+            # Ensure we have strings before normalization
+            result_series_str = str(result_series) if result_series is not None else ""
+            wanted_series_str = str(wanted_series) if wanted_series is not None else ""
+            
+            normalized_result_series = self.series_analyzer.normalize_series_name(result_series_str)
+            normalized_wanted_series = self.series_analyzer.normalize_series_name(wanted_series_str)
             
             if normalized_result_series == normalized_wanted_series:
                 series_sim = 1.0
@@ -79,9 +112,26 @@ class EnhancedConfidenceScorer:
             
             # Remove series name from titles if possible for cleaner comparison
             if result.get('series'):
-                result_title = result_title.replace(result.get('series', '').lower(), '').strip()
+                # Handle series as either string or list
+                result_series = result.get('series', '')
+                if isinstance(result_series, list):
+                    for series in result_series:
+                        if isinstance(series, dict) and 'title' in series:
+                            series_title = series['title'].lower()
+                            result_title = result_title.replace(series_title, '').strip()
+                elif isinstance(result_series, str):
+                    result_title = result_title.replace(result_series.lower(), '').strip()
+                    
             if wanted.get('series'):
-                wanted_title = wanted_title.replace(wanted.get('series', '').lower(), '').strip()
+                # Handle series as either string or list
+                wanted_series = wanted.get('series', '')
+                if isinstance(wanted_series, list):
+                    for series in wanted_series:
+                        if isinstance(series, dict) and 'title' in series:
+                            series_title = series['title'].lower()
+                            wanted_title = wanted_title.replace(series_title, '').strip()
+                elif isinstance(wanted_series, str):
+                    wanted_title = wanted_title.replace(wanted_series.lower(), '').strip()
                 
             # Clean up remaining punctuation
             result_title = re.sub(r'[,:\-_()]', ' ', result_title)
@@ -104,8 +154,8 @@ class EnhancedConfidenceScorer:
             scores['title_match'] = 0.7  # Neutral if no title filter
         
         # Volume consistency - improved with special case handling
-        result_vol = extract_volume_number(result.get('title', ''))
-        wanted_vol = extract_volume_number(wanted.get('title', '')) if wanted.get('title') else None
+        result_vol = self.series_analyzer.extract_volume_number(result.get('title', ''))
+        wanted_vol = self.series_analyzer.extract_volume_number(wanted.get('title', '')) if wanted.get('title') else None
         
         if result_vol and wanted_vol:
             if result_vol == wanted_vol:
@@ -117,10 +167,27 @@ class EnhancedConfidenceScorer:
                 elif abs(float(result_vol) - float(wanted_vol)) < 0.6:
                     # Close volume numbers might be acceptable (e.g., 1.5 vs 2)
                     scores['volume_consistency'] = 0.7
+                elif abs(float(result_vol) - float(wanted_vol)) < 1.1:
+                    # Fairly close volume numbers might be acceptable (e.g., 1 vs 2)
+                    # This handles off-by-one errors in volume numbering between publishers/regions
+                    scores['volume_consistency'] = 0.5
+                # Handle the case where one is "0" (prequel/prologue) and the other is "1" (first volume)
+                elif (float(result_vol) == 0 and float(wanted_vol) == 1) or (float(result_vol) == 1 and float(wanted_vol) == 0):
+                    scores['volume_consistency'] = 0.4  # Give some credit, but still low
                 else:
                     scores['volume_consistency'] = 0.0
+        # Handle case where we don't have volume numbers
+        elif not result_vol and not wanted_vol:
+            # If neither has volume info, give full score - they're likely the same
+            scores['volume_consistency'] = 1.0
+        elif not wanted_vol:
+            # If wanted doesn't specify volume but result has one, it's potentially ok
+            scores['volume_consistency'] = 0.8  # Somewhat neutral but positive
+        elif not result_vol:
+            # If we wanted a specific volume but result doesn't specify, that's not great
+            scores['volume_consistency'] = 0.5  # Lower neutral score
         else:
-            scores['volume_consistency'] = 0.8  # Neutral score
+            scores['volume_consistency'] = 0.7  # General neutral score
         
         # Publisher matching
         if wanted.get('publisher') and result.get('publisher'):
@@ -200,23 +267,42 @@ class EnhancedConfidenceScorer:
             Tuple of (needs_review, reason)
         """
         # Low overall confidence
-        if confidence < 0.6:
-            return True, f"Low confidence score: {confidence:.2f}"
+        if confidence < self.thresholds['low']:
+            return True, f"Low overall confidence score: {confidence:.2f}"
         
-        # Poor author match (this is critical)
+        # Critical factor checks
+        
+        # Author match is critical - if it's bad, definitely needs review
         if score_breakdown.get('author_match', 0) < 0.7:
             return True, f"Poor author match: {score_breakdown['author_match']:.2f}"
         
-        # Poor series match when series is specified
-        if score_breakdown.get('series_match', 1) < 0.6:
+        # Series match is also important when a series is specified
+        if score_breakdown.get('series_match', 1) < 0.6 and score_breakdown.get('series_match', 1) != 0.5:
+            # 0.5 is the neutral value when no series was specified
             return True, f"Poor series match: {score_breakdown['series_match']:.2f}"
         
+        # Volume mismatch - critical for series
+        if score_breakdown.get('volume_consistency', 1) < 0.3:
+            return True, f"Volume number mismatch: {score_breakdown['volume_consistency']:.2f}"
+            
         # Mixed signals (good in some areas, poor in others)
-        high_scores = sum(1 for score in score_breakdown.values() if score > 0.8)
+        critical_factors = ['author_match', 'series_match', 'volume_consistency']
+        critical_scores = [score_breakdown.get(factor, 0) for factor in critical_factors]
+        
+        # If critical factors are good but overall confidence is mediocre
+        if min(critical_scores) > 0.7 and confidence < self.thresholds['medium']:
+            return True, "Inconsistent confidence signals (critical factors good, overall mediocre)"
+            
+        # If we have a mix of very good and very poor signals
+        high_scores = sum(1 for score in score_breakdown.values() if score > 0.9)
         low_scores = sum(1 for score in score_breakdown.values() if score < 0.4)
         
         if high_scores >= 2 and low_scores >= 2:
-            return True, "Mixed confidence signals"
+            return True, "Mixed confidence signals (both very high and very low factor scores)"
+            
+        # If overall confidence is good but any critical factor is just mediocre
+        if confidence > self.thresholds['medium'] and any(0.5 <= score <= 0.75 for score in critical_scores):
+            return True, "Possible false positive (good overall score but mediocre critical factors)"
         
         return False, "Confidence acceptable"
 

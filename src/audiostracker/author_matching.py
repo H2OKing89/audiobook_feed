@@ -104,6 +104,117 @@ class AuthorMatcher:
                 "蝉川夏哉",
                 "Semikawa Natsuya"
             },
+            "Yuka Tachibana": {
+                "Yuka Tachibana",
+                "橘由華",
+                "Tachibana Yuka"
+            },
+            "Fujino Omori": {
+                "Fujino Omori",
+                "大森藤ノ",
+                "Omori Fujino"
+            },
+            "Aneko Yusagi": {
+                "Aneko Yusagi",
+                "悠崎あねこ",
+                "Yusagi Aneko"
+            },
+            "NISIO ISIN": {
+                "NISIO ISIN",
+                "NisiOisiN",
+                "西尾維新",
+                "Nishio Ishin"
+            },
+            "Shigeru Miura": {
+                "Shigeru Miura",
+                "三浦しをん",
+                "Miura Shigeru"
+            },
+            "Shibai Kineko": {
+                "Shibai Kineko",
+                "柴緑ねこ",
+                "Kineko Shibai"
+            },
+            "Shu": {
+                "Shu",
+                "秋",
+                "Shu, Tsukiko - illustrator",
+                "Tsukiko - illustrator, Shu"
+            },
+            "Miku": {
+                "Miku",
+                "ミク",
+                "Miku, Milcha - illustrator",
+                "Milcha - illustrator, Miku"
+            },
+            "Sunsunsun": {
+                "Sunsunsun",
+                "三三三",
+                "San San San",
+                "Sunsunsun, Momoco - illustrator",
+                "Momoco - illustrator, Sunsunsun"
+            },
+            "Yoshinobu Akita": {
+                "Yoshinobu Akita",
+                "秋田禎信",
+                "Akita Yoshinobu"
+            },
+            "Kinoko Nasu": {
+                "Kinoko Nasu", 
+                "奈須きのこ", 
+                "Nasu Kinoko"
+            },
+            "Gen Urobuchi": {
+                "Gen Urobuchi",
+                "虚淵玄",
+                "Urobuchi Gen", 
+                "Nitroplus"
+            },
+            "Kafka Asagiri": {
+                "Kafka Asagiri",
+                "朝霧カフカ",
+                "Asagiri Kafka"
+            },
+            "Yuki Yaku": {
+                "Yuki Yaku",
+                "夜宵草",
+                "Yaku Yuki"
+            },
+            "Nisio Isin": {
+                "Nisio Isin",
+                "西尾 維新",
+                "Nishio Ishin",
+                "NISIOISIN"
+            },
+            "Natsuki Kizu": {
+                "Natsuki Kizu",
+                "キヅナツキ",
+                "Kizu Natsuki"
+            },
+            "Makoto Shinkai": {
+                "Makoto Shinkai",
+                "新海誠",
+                "Shinkai Makoto"
+            },
+            "Kamome Shirahama": {
+                "Kamome Shirahama",
+                "白浜鴎",
+                "Shirahama Kamome"
+            },
+            "Adachitoka": {
+                "Adachitoka",
+                "あだちとか"
+            },
+            "Tsukasa Fushimi": {
+                "Tsukasa Fushimi",
+                "伏見つかさ",
+                "Fushimi Tsukasa"
+            },
+            "Wataru Watari": {
+                "Wataru Watari",
+                "渡航",
+                "Watari Wataru"
+            }
             # Add more author mappings as needed
         }
         
@@ -136,10 +247,16 @@ class AuthorMatcher:
             r'\s*author\s*$',
             r'\s*writer\s*$',
             r'\s*sensei\s*$',
+            r'\s*contributor\s*$',
+            r'\s*editor\s*$',
+            r'\s*created by\s*$',
         ]
         
         for suffix in suffixes:
             name = re.sub(suffix, '', name, flags=re.IGNORECASE)
+            
+        # Also remove text within parentheses at the end of the name
+        name = re.sub(r'\s*\([^)]*\)\s*$', '', name)
         
         return name.strip()
     
@@ -181,25 +298,35 @@ class AuthorMatcher:
         if canonical1 == canonical2:
             return True, 0.95
         
-        # Partial word match check (for cases like "Fuse" in "Short Fuse")
+        # Normalize names for comparison
         norm1 = self.normalize_author_name(author1)
         norm2 = self.normalize_author_name(author2)
         
-        # Check if norm1 is contained as a complete word in norm2
+        # Handle potentially ambiguous author names 
+        ambiguity_score = self.handle_ambiguous_matches(norm1, norm2)
+        
+        if ambiguity_score == 0.0:
+            # Rejected due to known ambiguity (e.g. "Fuse" vs "Short Fuse")
+            return False, 0.0
+            
+        # Check for partial word match (for cases like author name contained in longer name)
         pattern1 = r'(^|\s)' + re.escape(norm1) + r'(\s|$)'
-        # Check if norm2 is contained as a complete word in norm1
         pattern2 = r'(^|\s)' + re.escape(norm2) + r'(\s|$)'
         
         if re.search(pattern1, norm2) or re.search(pattern2, norm1):
             # More careful check to avoid matching unrelated names
             # Only match if the partial name is at least 4 characters long
             if len(norm1) >= 4 or len(norm2) >= 4:
-                return True, 0.85
+                # Apply ambiguity adjustment
+                return True, 0.85 * ambiguity_score
         
         # Fuzzy matching on normalized names
         similarity = SequenceMatcher(None, norm1, norm2).ratio()
         
-        return similarity >= threshold, similarity
+        # Apply ambiguity adjustment to similarity
+        adjusted_similarity = similarity * ambiguity_score
+        
+        return adjusted_similarity >= threshold, adjusted_similarity
     
     def add_author_alias(self, canonical: str, alias: str):
         """Add a new author alias mapping"""
@@ -208,14 +335,68 @@ class AuthorMatcher:
         
         self.author_aliases[canonical].add(alias)
         self.alias_to_canonical[self.normalize_author_name(alias)] = canonical
+    
+    def handle_ambiguous_matches(self, author1: str, author2: str) -> float:
+        """
+        Handle special cases of ambiguous author names like 'Fuse' vs 'Short Fuse'
+        
+        Returns:
+            float: Adjusted confidence score (0.0 to 1.0)
+        """
+        # Normalize both names for comparison
+        name1_lower = author1.lower().strip()
+        name2_lower = author2.lower().strip()
+        
+        # List of known ambiguous name pairs to reject
+        ambiguous_pairs = [
+            ("fuse", "short fuse"),
+            ("fuse", "science fuse"),
+            ("fuse", "fuse media"),
+            ("fuse", "fuse vc"),
+            ("fuse", "fuse inventory"),
+            ("fuse", "fuse campaign"),
+            ("fuse", "fuse the world"),
+            ("fuse", "tammy fuse"),
+            ("fuse", "fuse kattai"),
+            ("fuse", "world fuse"),
+            ("ciel", "black ciel"),
+            ("mori", "kotaro mori"),
+            ("kuro", "kurobane"),
+            ("sora", "sorata akizuki")
+        ]
+        
+        # Check if we have an ambiguous pair
+        for pair in ambiguous_pairs:
+            if (pair[0] in name1_lower and pair[1] in name2_lower) or \
+               (pair[0] in name2_lower and pair[1] in name1_lower):
+                return 0.0  # Reject the match completely
+                
+        # For partial name matches, be more strict
+        if len(name1_lower) < 5 or len(name2_lower) < 5:
+            # For very short names, one must be contained in the other
+            if name1_lower in name2_lower or name2_lower in name1_lower:
+                # Short name is substring of longer name
+                return 0.75
+            else:
+                # Short names that don't match exactly are likely different authors
+                return 0.0
+                
+        return 1.0  # No ambiguity detected, use normal matching
 
 
 # Global instance
 author_matcher = AuthorMatcher()
 
-def match_authors(author1: str, author2: str, threshold: float = 0.8) -> Tuple[bool, float]:
+def match_authors(author1: str, author2: str, author_matcher_instance = None, threshold: float = 0.8) -> Tuple[bool, float]:
     """Convenience function for author matching"""
-    return author_matcher.authors_match(author1, author2, threshold)
+    if isinstance(author_matcher_instance, AuthorMatcher):
+        # If an AuthorMatcher instance is provided, use it
+        return author_matcher_instance.authors_match(author1, author2, threshold)
+    else:
+        # Otherwise, use the global instance and treat the third argument as threshold if provided
+        if author_matcher_instance is not None and isinstance(author_matcher_instance, (int, float)):
+            threshold = author_matcher_instance
+        return author_matcher.authors_match(author1, author2, threshold)
 
 def get_canonical_author_name(author: str) -> str:
     """Get canonical author name"""
