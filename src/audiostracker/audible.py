@@ -41,6 +41,22 @@ except ImportError:
         
         def fuzzy_ratio(s1, s2):
             return 1.0 if s1 == s2 else 0.0
+
+# Try to import enhanced matching modules
+enhanced_matching_available = False
+try:
+    from .author_matching import AuthorMatcher
+    from .series_analysis import SeriesVolumeAnalyzer
+    from .enhanced_confidence import calculate_confidence as enhanced_calculate_confidence
+    enhanced_matching_available = True
+except ImportError:
+    try:
+        from author_matching import AuthorMatcher
+        from series_analysis import SeriesVolumeAnalyzer
+        from enhanced_confidence import calculate_confidence as enhanced_calculate_confidence
+        enhanced_matching_available = True
+    except ImportError:
+        enhanced_matching_available = False
             
 from typing import Dict, List, Any, Optional
 
@@ -48,6 +64,19 @@ from typing import Dict, List, Any, Optional
 _last_api_call = 0
 _api_lock = Lock()
 _api_min_interval = 6  # default: 10 calls/minute = 6s between calls
+
+# Initialize enhanced matching components if available
+author_matcher = None
+series_analyzer = None
+
+if enhanced_matching_available:
+    try:
+        author_matcher = AuthorMatcher()
+        series_analyzer = SeriesVolumeAnalyzer()
+        logging.info("Enhanced matching modules loaded successfully")
+    except Exception as e:
+        logging.warning(f"Failed to initialize enhanced matching: {e}")
+        enhanced_matching_available = False
 
 # Cache settings
 _cache_dir = os.path.join(os.path.dirname(__file__), 'data', 'cache')
@@ -588,6 +617,15 @@ def confidence(result, wanted):
     Returns:
         float: Confidence score between 0 and 1+ (can exceed 1.0 with bonuses)
     """
+    # Use enhanced confidence calculation if available
+    try:
+        base_score, details, _ = enhanced_calculate_confidence(result, wanted)
+        if base_score is not None:
+            return base_score  # Return the base score directly if available
+    except Exception as e:
+        logging.warning(f"Enhanced confidence calculation failed: {e}")
+    
+    # Fallback to basic confidence calculation
     # Define core weights (must sum to 1.0)
     core_weights = {
         'title': 0.5,   # Increased from 0.4
@@ -748,6 +786,78 @@ def confidence(result, wanted):
         logging.log(log_level, f"Match score: {score:.2f}; " + "; ".join(log_parts))
     
     return score
+
+def enhanced_confidence(result, wanted):
+    """
+    Enhanced confidence calculation using new matching modules if available,
+    falls back to original confidence calculation
+    """
+    if enhanced_matching_available and author_matcher and series_analyzer:
+        try:
+            # Use the enhanced confidence calculation
+            confidence_score, breakdown, needs_review = enhanced_calculate_confidence(result, wanted)
+            
+            # Add debugging information
+            logging.debug(f"Enhanced confidence for '{result.get('title', 'Unknown')}': {confidence_score:.3f} (breakdown: {breakdown})")
+            
+            return confidence_score, breakdown, needs_review
+        except Exception as e:
+            logging.warning(f"Enhanced confidence calculation failed, falling back to original: {e}")
+    
+    # Fall back to original confidence calculation
+    original_score = confidence(result, wanted)
+    return original_score, {}, original_score < 0.6
+
+def confidence_with_enhancements(result, wanted):
+    """
+    Wrapper function that applies enhanced matching improvements to the original confidence function
+    """
+    if not enhanced_matching_available:
+        return confidence(result, wanted)
+    
+    try:
+        # Apply enhanced author matching
+        if author_matcher and 'author' in wanted and wanted['author']:
+            result_authors = [a.strip() for a in result.get('author', '').split(',') if a.strip()]
+            if result_authors:
+                best_author_match = False
+                best_author_score = 0.0
+                
+                # Check each result author against the wanted author
+                for result_author in result_authors:
+                    matches, score = author_matcher.authors_match(wanted['author'], result_author)
+                    if score > best_author_score:
+                        best_author_match = matches
+                        best_author_score = score
+                
+                # If enhanced matching finds a good author match, boost confidence
+                if best_author_match and best_author_score > 0.8:
+                    base_score = confidence(result, wanted)
+                    # Boost by up to 0.15 points for excellent author matches
+                    author_boost = (best_author_score - 0.8) * 0.75  # Scale 0.8-1.0 to 0-0.15
+                    boosted_score = min(base_score + author_boost, 1.2)  # Cap at 1.2
+                    logging.debug(f"Author match boost: {base_score:.3f} -> {boosted_score:.3f} (author score: {best_author_score:.3f})")
+                    return boosted_score
+        
+        # Apply enhanced series volume analysis
+        if series_analyzer and 'title' in result and result['title']:
+            result_volume = series_analyzer.extract_volume_number(result['title'])
+            wanted_volume = None
+            if 'title' in wanted and wanted['title']:
+                wanted_volume = series_analyzer.extract_volume_number(wanted['title'])
+            
+            # If we can extract volumes and they match, boost confidence
+            if result_volume is not None and wanted_volume is not None and result_volume == wanted_volume:
+                base_score = confidence(result, wanted)
+                boosted_score = min(base_score + 0.1, 1.2)  # Volume match bonus
+                logging.debug(f"Volume match boost: {base_score:.3f} -> {boosted_score:.3f} (volumes: {result_volume})")
+                return boosted_score
+        
+    except Exception as e:
+        logging.debug(f"Enhanced confidence boost failed: {e}")
+    
+    # Return original confidence if enhancements fail
+    return confidence(result, wanted)
 
 @audible_rate_limited
 @retry_with_exponential_backoff(max_retries=3, retry_on_exceptions=(requests.RequestException, requests.HTTPError, requests.Timeout))
@@ -1010,11 +1120,21 @@ def find_best_match_with_review(results: List[Dict[str, Any]], wanted: Dict[str,
     if not results:
         return None
     
-    # Score all results
+    # Score all results using enhanced confidence if available
     scored_results = []
     for result in results:
-        score = confidence(result, wanted)
-        scored_results.append((score, result))
+        if enhanced_matching_available:
+            # Try enhanced confidence first
+            try:
+                confidence_score, breakdown, needs_review = enhanced_confidence(result, wanted)
+                scored_results.append((confidence_score, result, breakdown, needs_review))
+                continue
+            except Exception as e:
+                logging.debug(f"Enhanced confidence failed, using original: {e}")
+        
+        # Fall back to enhanced wrapper or original confidence
+        score = confidence_with_enhancements(result, wanted)
+        scored_results.append((score, result, {}, score < preferred_confidence))
     
     # Sort by confidence score (highest first)
     scored_results.sort(key=lambda x: x[0], reverse=True)
@@ -1022,19 +1142,23 @@ def find_best_match_with_review(results: List[Dict[str, Any]], wanted: Dict[str,
     if not scored_results:
         return None
     
-    best_score, best_result = scored_results[0]
+    best_score, best_result, breakdown, enhanced_needs_review = scored_results[0]
     
     # Check if any result meets the preferred threshold
     if best_score >= preferred_confidence:
         best_result['needs_review'] = False
         best_result['confidence_score'] = best_score
+        if breakdown:
+            best_result['confidence_breakdown'] = breakdown
         logging.info(f"High confidence match ({best_score:.2f}): {best_result['title']}")
         return best_result
     
     # Check if the best result meets minimum threshold
     if best_score >= min_confidence:
-        best_result['needs_review'] = True
+        best_result['needs_review'] = enhanced_needs_review if enhanced_matching_available else True
         best_result['confidence_score'] = best_score
+        if breakdown:
+            best_result['confidence_breakdown'] = breakdown
         logging.warning(f"Low confidence match ({best_score:.2f}) - needs review: {best_result['title']}")
         return best_result
     
@@ -1060,10 +1184,26 @@ def find_all_good_matches(results: List[Dict[str, Any]], wanted: Dict[str, Any],
     if not results:
         return []
     
-    # Score all results
+    # Score all results using enhanced confidence if available
     scored_results = []
     for result in results:
-        score = confidence(result, wanted)
+        if enhanced_matching_available:
+            # Try enhanced confidence first
+            try:
+                confidence_score, breakdown, needs_review = enhanced_confidence(result, wanted)
+                if confidence_score >= min_confidence:
+                    result = result.copy()  # Create a copy to avoid modifying original
+                    result['confidence_score'] = confidence_score
+                    result['needs_review'] = needs_review
+                    if breakdown:
+                        result['confidence_breakdown'] = breakdown
+                    scored_results.append((confidence_score, result))
+                continue
+            except Exception as e:
+                logging.debug(f"Enhanced confidence failed, using original: {e}")
+        
+        # Fall back to enhanced wrapper or original confidence
+        score = confidence_with_enhancements(result, wanted)
         if score >= min_confidence:  # Only include results that meet minimum threshold
             result = result.copy()  # Create a copy to avoid modifying original
             result['confidence_score'] = score
