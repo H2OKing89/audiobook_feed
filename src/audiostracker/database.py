@@ -526,6 +526,42 @@ def get_author_criteria_summary(author_name):
     
     return result
 
+def delete_audiobook_by_asin(asin):
+    """
+    Delete an audiobook from the database by its ASIN.
+    
+    Args:
+        asin (str): The ASIN of the audiobook to delete
+        
+    Returns:
+        bool: True if deletion was successful, False otherwise
+    """
+    try:
+        with get_connection() as conn:
+            c = conn.cursor()
+            
+            # First, get the book details for logging
+            c.execute("SELECT title, author FROM audiobooks WHERE asin = ?", (asin,))
+            book_info = c.fetchone()
+            
+            if book_info:
+                title, author = book_info
+                
+                # Delete the book
+                c.execute("DELETE FROM audiobooks WHERE asin = ?", (asin,))
+                conn.commit()
+                
+                # Log the deletion
+                logging.info(f"Deleted audiobook: '{title}' by {author} (ASIN: {asin})")
+                return True
+            else:
+                logging.warning(f"Attempted to delete non-existent audiobook with ASIN: {asin}")
+                return False
+                
+    except Exception as e:
+        logging.error(f"Error deleting audiobook with ASIN {asin}: {e}")
+        return False
+
 # Example usage (in main.py or a test script):
 if __name__ == "__main__":
     init_db()

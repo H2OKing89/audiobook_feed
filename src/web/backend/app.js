@@ -1212,6 +1212,79 @@ except Exception as e:
   }
 });
 
+// DELETE endpoint to remove an audiobook from the database by ASIN
+app.delete('/api/database/:asin', (req, res) => {
+  const asin = req.params.asin;
+  
+  if (!asin) {
+    return res.status(400).json({ error: 'ASIN is required' });
+  }
+
+  const tempScriptPath = path.join(os.tmpdir(), `delete_audiobook_${Date.now()}.py`);
+  const scriptContent = `
+import sys
+import os
+sys.path.insert(0, '${PYTHON_PATH}')
+sys.path.insert(0, '${path.dirname(PYTHON_PATH)}')
+os.chdir('${PYTHON_PATH}')
+
+try:
+    import json
+    from audiostracker.database import delete_audiobook_by_asin
+    
+    success = delete_audiobook_by_asin("${asin.replace(/"/g, '\\"')}")
+    print(json.dumps({"success": success}))
+    sys.exit(0 if success else 1)
+except Exception as e:
+    import traceback
+    import json
+    print(json.dumps({"error": str(e), "traceback": traceback.format_exc()}))
+    sys.exit(1)
+`;
+
+  fs.writeFileSync(tempScriptPath, scriptContent);
+
+  const python = spawn('python', [tempScriptPath]);
+  
+  let outputData = '';
+
+  python.stdout.on('data', (data) => {
+    outputData += data.toString();
+  });
+
+  python.on('close', (code) => {
+    try {
+      fs.unlinkSync(tempScriptPath);
+    } catch (err) {
+      console.error('Error deleting temporary script:', err);
+    }
+
+    if (code !== 0) {
+      console.error(`Python script exited with code ${code}`);
+      return res.status(500).json({ error: 'Failed to delete audiobook', output: outputData });
+    }
+
+    try {
+      // Get the last line which should contain our JSON output
+      const jsonLine = outputData.trim().split('\n').pop();
+      const result = JSON.parse(jsonLine);
+      
+      if (result.success) {
+        res.json({ success: true, message: `Audiobook with ASIN ${asin} deleted successfully` });
+      } else {
+        res.status(404).json({ success: false, message: `Audiobook with ASIN ${asin} not found` });
+      }
+    } catch (err) {
+      console.error('Error parsing Python output:', err);
+      res.status(500).json({ error: 'Error processing response', output: outputData });
+    }
+  });
+
+  python.stderr.on('data', (data) => {
+    console.error(`Python stderr: ${data}`);
+  });
+});
+
 // Fallback route to handle SPA routing - only serve index.html if dist exists
 app.get('*', (req, res) => {
   console.log(`Fallback route hit for: ${req.path}`);

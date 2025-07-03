@@ -1,109 +1,123 @@
 #!/bin/bash
 
-# Stop script for Audiobook Feed Generator Web UI
-# SAFETY-FOCUSED version that won't kill SSH sessions
+# Ultra-safe script to stop Audiobook Feed Generator Web UI
+# This version takes extreme precautions to NEVER affect SSH sessions
 
-echo "Stopping Audiobook Feed Generator Web UI (SAFE MODE)..."
+echo "Stopping Audiobook Feed Generator Web UI (ULTRA-SAFE MODE)..."
 
-# Function to safely kill process running on specific port
-# Only kills Node.js processes to avoid terminating SSH or other critical services
-kill_port() {
-  PORT=$1
-  echo "Looking for Node.js processes on port $PORT..."
+# Get the current user's username for safer process identification
+CURRENT_USER=$(whoami)
+echo "Running as user: $CURRENT_USER"
+
+# Function to check if a process is definitely a web UI process
+is_web_ui_process() {
+  local PID=$1
   
-  # Look ONLY for node processes on this port and exclude SSH
-  # The grep -v excludes SSH, grep node only includes node processes
-  PIDS=$(lsof -ti:$PORT | grep -v sshd | xargs -r ps -o pid= -p 2>/dev/null | xargs -r)
-  
-  if [ -n "$PIDS" ]; then
-    echo "Found processes on port $PORT: $PIDS"
-    
-    # Process each PID individually with extra safety checks
-    for PID in $PIDS; do
-      # Extra verification - get full command line to ensure it's Node.js related
-      CMDLINE=$(cat /proc/$PID/cmdline 2>/dev/null | tr '\0' ' ' || echo "")
-      PROCESS_NAME=$(ps -p $PID -o comm= 2>/dev/null || echo "")
-      
-      # Only proceed if it's definitely a Node.js process
-      if [[ "$PROCESS_NAME" == *"node"* || "$CMDLINE" == *"node"* || 
-            "$PROCESS_NAME" == *"npm"* || "$CMDLINE" == *"npm"* || 
-            "$PROCESS_NAME" == *"vue"* || "$CMDLINE" == *"vue"* ]]; then
-            
-        echo "✓ Confirmed Node.js process: $PID ($PROCESS_NAME)"
-        echo "  Command: ${CMDLINE:0:80}..."
-        
-        # Try gentle termination first
-        echo "  Sending SIGTERM..."
-        kill -15 $PID 2>/dev/null
-        
-        # Wait briefly to see if it shuts down
-        sleep 2
-        
-        # Check if still running, then force kill
-        if kill -0 $PID 2>/dev/null; then
-          echo "  Process still running, sending SIGKILL..."
-          kill -9 $PID 2>/dev/null
-        else
-          echo "  Process terminated successfully."
-        fi
-      else
-        echo "⚠️ Skipping non-Node.js process: $PID ($PROCESS_NAME)"
-      fi
-    done
-  else
-    echo "No Node.js processes found on port $PORT"
+  # Skip if we can't access the process info (might be system or other user's process)
+  if [ ! -r "/proc/$PID/cmdline" ]; then
+    return 1 # Not our process
   fi
+  
+  # Get command line and executable name
+  local CMDLINE=$(tr '\0' ' ' < /proc/$PID/cmdline 2>/dev/null)
+  local PROCESS_NAME=$(ps -p $PID -o comm= 2>/dev/null)
+  local PROCESS_USER=$(ps -p $PID -o user= 2>/dev/null)
+  
+  # Skip any process not owned by the current user
+  if [ "$PROCESS_USER" != "$CURRENT_USER" ]; then
+    return 1 # Not our process
+  fi
+  
+  # NEVER touch SSH-related processes - multiple checks
+  if [[ "$CMDLINE" == *"ssh"* || "$PROCESS_NAME" == *"ssh"* || 
+        "$CMDLINE" == *"vscode"* || "$PROCESS_NAME" == *"vscode"* ||
+        "$CMDLINE" == *"code"* ]]; then
+    echo "⚠️ Skipping SSH/VSCode-related process: $PID"
+    return 1 # Not a web UI process
+  fi
+  
+  # Check if it's a Node.js/npm/Vue process with specific web UI patterns
+  if [[ "$PROCESS_NAME" == *"node"* || "$CMDLINE" == *"node"* ]]; then
+    # Only target specific web UI processes
+    if [[ "$CMDLINE" == *"vue-cli-service"* || 
+          "$CMDLINE" == *"frontend"* ||
+          "$CMDLINE" == *"backend"* || 
+          "$CMDLINE" == *"app.js"* || 
+          "$CMDLINE" == *"express"* || 
+          "$CMDLINE" == *":5005"* || 
+          "$CMDLINE" == *":5007"* ]]; then
+      return 0 # Yes, it's a web UI process
+    fi
+  fi
+  
+  return 1 # Not a web UI process
 }
 
-# First, try stopping by port (safest method)
-echo "Step 1: Stopping frontend server (Vue.js on port 5007)..."
-kill_port 5007
+# Find our specific web UI processes safely
+echo "Searching for web UI processes (Vue.js and Express)..."
+echo "This will ONLY target processes matching specific patterns in our web UI"
 
-echo "Step 2: Stopping backend server (Express on port 5005)..."
-kill_port 5005
+# Find potential Node.js processes
+WEB_UI_PIDS=()
+for PID in $(pgrep -u $CURRENT_USER 'node|npm|vue' 2>/dev/null); do
+  if is_web_ui_process $PID; then
+    WEB_UI_PIDS+=($PID)
+    CMDLINE=$(tr '\0' ' ' < /proc/$PID/cmdline 2>/dev/null | cut -c 1-80)
+    echo "✓ Found web UI process $PID: $CMDLINE..."
+  fi
+done
 
-# Also try backup method - find processes by command pattern
-echo "Step 3: Checking for any remaining Node.js Web UI processes..."
-
-# Find Vue CLI service processes
-echo "Looking for Vue CLI processes..."
-VUE_PIDS=$(pgrep -f "vue-cli-service" 2>/dev/null || echo "")
-if [ -n "$VUE_PIDS" ]; then
-  for PID in $VUE_PIDS; do
-    CMDLINE=$(cat /proc/$PID/cmdline 2>/dev/null | tr '\0' ' ' || echo "")
-    if [[ "$CMDLINE" == *"vue-cli-service"* && "$CMDLINE" != *"ssh"* ]]; then
-      echo "Found Vue process to stop: $PID"
-      echo "  Command: ${CMDLINE:0:80}..."
-      kill -15 $PID 2>/dev/null
-      sleep 2
-      if kill -0 $PID 2>/dev/null; then
-        kill -9 $PID 2>/dev/null
-      fi
+# If no processes found, check using port information specifically for Vue/Express
+if [ ${#WEB_UI_PIDS[@]} -eq 0 ]; then
+  echo "No web UI processes found by name, checking ports 5005 and 5007..."
+  
+  # Check port 5005 (Express backend)
+  for PID in $(lsof -t -i:5005 -sTCP:LISTEN 2>/dev/null); do
+    if is_web_ui_process $PID; then
+      WEB_UI_PIDS+=($PID)
+      CMDLINE=$(tr '\0' ' ' < /proc/$PID/cmdline 2>/dev/null | cut -c 1-80)
+      echo "✓ Found backend process $PID on port 5005: $CMDLINE..."
     fi
   done
-else
-  echo "No Vue CLI processes found."
-fi
-
-# Find app.js processes
-echo "Looking for Node.js backend processes..."
-BACKEND_PIDS=$(pgrep -f "node.*app.js" 2>/dev/null || echo "")
-if [ -n "$BACKEND_PIDS" ]; then
-  for PID in $BACKEND_PIDS; do
-    CMDLINE=$(cat /proc/$PID/cmdline 2>/dev/null | tr '\0' ' ' || echo "")
-    if [[ "$CMDLINE" == *"app.js"* && "$CMDLINE" != *"ssh"* ]]; then
-      echo "Found backend process to stop: $PID"
-      echo "  Command: ${CMDLINE:0:80}..."
-      kill -15 $PID 2>/dev/null
-      sleep 2
-      if kill -0 $PID 2>/dev/null; then
-        kill -9 $PID 2>/dev/null
-      fi
+  
+  # Check port 5007 (Vue frontend)
+  for PID in $(lsof -t -i:5007 -sTCP:LISTEN 2>/dev/null); do
+    if is_web_ui_process $PID; then
+      WEB_UI_PIDS+=($PID)
+      CMDLINE=$(tr '\0' ' ' < /proc/$PID/cmdline 2>/dev/null | cut -c 1-80)
+      echo "✓ Found frontend process $PID on port 5007: $CMDLINE..."
     fi
   done
-else
-  echo "No backend processes found."
 fi
 
-echo "Web UI has been safely stopped."
-echo "SSH session should remain active and unaffected."
+# Stop the processes
+if [ ${#WEB_UI_PIDS[@]} -eq 0 ]; then
+  echo "No AudioStacker web UI processes found to stop."
+else
+  echo "Found ${#WEB_UI_PIDS[@]} web UI processes to stop..."
+  
+  for PID in "${WEB_UI_PIDS[@]}"; do
+    echo "Stopping process $PID..."
+    
+    # Get process info for logging
+    PS_INFO=$(ps -p $PID -o pid,comm,args 2>/dev/null || echo "Process $PID")
+    echo "Process details: $PS_INFO"
+    
+    # Send SIGTERM first for graceful shutdown
+    kill -15 $PID 2>/dev/null
+    echo "Sent SIGTERM to process $PID"
+    
+    # Wait a moment for graceful termination
+    sleep 2
+    
+    # Check if still running
+    if kill -0 $PID 2>/dev/null; then
+      echo "Process $PID still running, sending SIGKILL..."
+      kill -9 $PID 2>/dev/null
+    else
+      echo "Process $PID terminated successfully."
+    fi
+  done
+fi
+
+echo "Web UI shutdown process completed."

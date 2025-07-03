@@ -242,6 +242,22 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Snackbar for notifications -->
+    <v-snackbar
+      v-model="snackbar.show"
+      :color="snackbar.color"
+      :timeout="snackbar.timeout"
+    >
+      {{ snackbar.text }}
+      <template #actions>
+        <v-btn
+          icon="mdi-close"
+          variant="text"
+          @click="snackbar.show = false"
+        ></v-btn>
+      </template>
+    </v-snackbar>
   </div>
 </template>
 
@@ -260,6 +276,12 @@ export default {
       totalBooks: 0,
       detailsDialog: false,
       selectedBook: null,
+      snackbar: {
+        show: false,
+        text: '',
+        color: 'success',
+        timeout: 3000
+      },
       filterOptions: [
         { title: 'All Books', value: 'all' },
         { title: 'Upcoming Releases', value: 'upcoming' },
@@ -343,9 +365,23 @@ export default {
     
     async removeFromDatabase(book) {
       if (confirm(`Are you sure you want to remove "${book.title}" from the database?`)) {
-        console.log('Remove from database:', book.asin);
-        // For now, just refresh the data
-        await this.loadBooks();
+        try {
+          this.loading = true;
+          const response = await axios.delete(`http://localhost:5005/api/database/${book.asin}`);
+          
+          if (response.data.success) {
+            this.showSnackbar(`Successfully removed "${book.title}" from the database`);
+          } else {
+            this.showSnackbar(`Failed to remove "${book.title}" from the database`, 'error');
+          }
+        } catch (error) {
+          console.error('Error removing book from database:', error);
+          this.showSnackbar(`Error: Failed to remove "${book.title}" from the database`, 'error');
+        } finally {
+          this.loading = false;
+          // Refresh the data
+          await this.loadBooks();
+        }
       }
     },
     
@@ -365,7 +401,13 @@ export default {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       return releaseDate >= today;
-    }
+    },
+    
+    showSnackbar(text, color = 'success') {
+      this.snackbar.text = text;
+      this.snackbar.color = color;
+      this.snackbar.show = true;
+    },
   }
 };
 </script>
