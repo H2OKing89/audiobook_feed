@@ -71,7 +71,7 @@ done
 if [ ${#WEB_UI_PIDS[@]} -eq 0 ]; then
   # Get configured ports from .env files or use defaults
   BACKEND_PORT=5005
-  FRONTEND_PORT=5007
+  FRONTEND_PORT=5006
   
   if [ -f "${PWD}/src/web/backend/.env" ]; then
     BACKEND_PORT=$(grep "PORT=" "${PWD}/src/web/backend/.env" | cut -d'=' -f2)

@@ -19,6 +19,7 @@ The frontend environment variables are stored in `/src/web/frontend/.env`:
 ```env
 VUE_APP_API_BASE_URL=http://localhost:5005  # The URL to the backend API
 VUE_APP_API_TIMEOUT=30000                  # API request timeout in milliseconds
+PORT=5006                                  # The port the frontend will listen on
 ```
 
 ## Configuring Ports

@@ -562,6 +562,104 @@ def delete_audiobook_by_asin(asin):
         logging.error(f"Error deleting audiobook with ASIN {asin}: {e}")
         return False
 
+def get_all_audiobooks(filter_type='all', limit=1000):
+    """
+    Get all audiobooks from the database with optional filtering.
+    
+    Args:
+        filter_type (str): Filter type: 'all', 'upcoming', 'released', or 'recent'
+        limit (int): Maximum number of records to return
+        
+    Returns:
+        list: List of audiobooks as dictionaries
+    """
+    with get_connection() as conn:
+        c = conn.cursor()
+        
+        today = datetime.now().date().isoformat()
+        query = ""
+        params = []
+        
+        if filter_type == 'upcoming':
+            # Filter for books not yet released
+            query = "SELECT * FROM audiobooks WHERE date(release_date) >= ? ORDER BY release_date ASC LIMIT ?"
+            params = [today, limit]
+        elif filter_type == 'released':
+            # Filter for already released books
+            query = "SELECT * FROM audiobooks WHERE date(release_date) < ? ORDER BY release_date DESC LIMIT ?"
+            params = [today, limit]
+        elif filter_type == 'recent':
+            # Most recently added to database
+            query = "SELECT * FROM audiobooks ORDER BY last_checked DESC LIMIT ?"
+            params = [limit]
+        else:  # 'all' or any other value
+            # All books, sorted by release date (upcoming first)
+            query = "SELECT * FROM audiobooks ORDER BY release_date ASC LIMIT ?"
+            params = [limit]
+        
+        c.execute(query, params)
+        
+        # Convert rows to dictionaries
+        columns = [desc[0] for desc in c.description]
+        books = []
+        
+        for row in c.fetchall():
+            book = dict(zip(columns, row))
+            
+            # Parse JSON fields
+            if 'notified_channels' in book and book['notified_channels']:
+                try:
+                    book['notified_channels'] = json.loads(book['notified_channels'])
+                except json.JSONDecodeError:
+                    book['notified_channels'] = {}
+            
+            books.append(book)
+        
+        return books
+
+def count_audiobooks():
+    """
+    Count total number of audiobooks in the database.
+    
+    Returns:
+        int: Total number of audiobooks
+    """
+    with get_connection() as conn:
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM audiobooks")
+        return c.fetchone()[0]
+
+def count_upcoming_audiobooks():
+    """
+    Count upcoming audiobooks (release date in the future).
+    
+    Returns:
+        int: Number of upcoming audiobooks
+    """
+    today = datetime.now().date().isoformat()
+    with get_connection() as conn:
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM audiobooks WHERE date(release_date) >= ?", (today,))
+        return c.fetchone()[0]
+
+def get_last_checked_time():
+    """
+    Get the most recent last_checked time from the database.
+    
+    Returns:
+        str: Last checked time in ISO format, or current time if no records
+    """
+    with get_connection() as conn:
+        c = conn.cursor()
+        c.execute("SELECT MAX(last_checked) FROM audiobooks")
+        last_checked = c.fetchone()[0]
+        
+        if last_checked:
+            return last_checked
+        
+        # If no records found, return current time
+        return datetime.now().isoformat()
+
 # Example usage (in main.py or a test script):
 if __name__ == "__main__":
     init_db()

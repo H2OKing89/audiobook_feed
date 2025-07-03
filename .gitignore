@@ -56,6 +56,10 @@ src/web/backend/.env
 
 # === Configuration & Secrets ===
 config/*.secret.yaml
+# Main .env files are tracked for development setup
+# src/web/frontend/.env 
+# src/web/backend/.env
+# But local/production/test variants are not tracked
 .env
 *.env.local
 *.env.production
