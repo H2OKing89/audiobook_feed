@@ -1,6 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router';
-// Remove unused import
-// import HomeView from '@/views/HomeView.vue';
 
 const routes = [
   {
@@ -13,8 +11,6 @@ const routes = [
     name: 'Database',
     component: () => import(/* webpackChunkName: "database" */ '@/views/DatabaseView.vue')
   },
-
-
   {
     path: '/watchlist',
     name: 'Watchlist',
@@ -24,6 +20,11 @@ const routes = [
     path: '/settings',
     name: 'Settings',
     component: () => import(/* webpackChunkName: "settings" */ '@/views/SettingsView.vue')
+  },
+  // Catch-all redirect for non-existent routes
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: '/'
   }
 ];
 
