@@ -318,10 +318,11 @@ def get_system_info():
     except ImportError:
         psutil_available = False
     from datetime import datetime
+    from typing import Dict, Union, Any
     
     try:
         # Get basic system information
-        system_info = {
+        system_info: Dict[str, Union[str, Dict[str, str]]] = {
             "python_version": sys.version,
             "platform": platform.platform(),
             "processor": platform.processor(),
@@ -357,12 +358,13 @@ def get_system_info():
         return system_info
     except Exception as e:
         # Return basic info if full system info can't be retrieved
-        return {
+        error_info: Dict[str, Union[str, Dict[str, str]]] = {
             "python_version": sys.version,
             "platform": platform.platform(),
             "error": str(e),
             "current_time": datetime.now().isoformat(),
         }
+        return error_info
 
 if __name__ == "__main__":
     try:
