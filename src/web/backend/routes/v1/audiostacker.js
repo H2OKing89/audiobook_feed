@@ -209,13 +209,14 @@ try:
     
     # Parse the criteria
     author_name = ${JSON.stringify(author)}
-    criteria = ${JSON.stringify(criteria || {})}
     
-    # Extract the filters
-    title_filter = criteria.get('title', None)
-    series_filter = criteria.get('series', None)
-    publisher_filter = criteria.get('publisher', None)
-    narrator_filter = criteria.get('narrator', None)
+    # Extract criteria values directly
+    title_filter = ${JSON.stringify((criteria || {}).title || null)}
+    series_filter = ${JSON.stringify((criteria || {}).series || null)}
+    publisher_filter = ${JSON.stringify((criteria || {}).publisher || null)}
+    narrator_filter = ${JSON.stringify((criteria || {}).narrator || null)}
+    
+    # Filters are already extracted above
     
     # Check if the author already exists
     watchlist = get_watchlist()
@@ -327,13 +328,14 @@ try:
     
     # Parse the criteria
     author_name = ${JSON.stringify(author)}
-    criteria = ${JSON.stringify(criteria || {})}
     
-    # Extract the filters
-    title_filter = criteria.get('title', None)
-    series_filter = criteria.get('series', None)
-    publisher_filter = criteria.get('publisher', None)
-    narrator_filter = criteria.get('narrator', None)
+    # Extract criteria values directly
+    title_filter = ${JSON.stringify((criteria || {}).title || null)}
+    series_filter = ${JSON.stringify((criteria || {}).series || null)}
+    publisher_filter = ${JSON.stringify((criteria || {}).publisher || null)}
+    narrator_filter = ${JSON.stringify((criteria || {}).narrator || null)}
+    
+    # Filters are already extracted above
     
     # First, delete any existing entries for this author
     delete_watchlist_entry_by_author(author_name)

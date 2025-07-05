@@ -45,18 +45,21 @@ except ImportError:
 # Try to import enhanced matching modules
 enhanced_matching_available = False
 try:
-    from .author_matching import AuthorMatcher
-    from .series_analysis import SeriesVolumeAnalyzer
-    from .enhanced_confidence import calculate_confidence as enhanced_calculate_confidence
+    # Using absolute import path for better reliability
+    import sys
+    import os
+    module_path = os.path.abspath(os.path.dirname(__file__))
+    if module_path not in sys.path:
+        sys.path.append(module_path)
+    
+    from author_matching import AuthorMatcher
+    from series_analysis import SeriesVolumeAnalyzer
+    from enhanced_confidence import calculate_confidence
+    enhanced_calculate_confidence = calculate_confidence  # Alias for backward compatibility
     enhanced_matching_available = True
-except ImportError:
-    try:
-        from author_matching import AuthorMatcher
-        from series_analysis import SeriesVolumeAnalyzer
-        from enhanced_confidence import calculate_confidence as enhanced_calculate_confidence
-        enhanced_matching_available = True
-    except ImportError:
-        enhanced_matching_available = False
+except ImportError as e:
+    print(f"Warning: Enhanced matching not available: {e}")
+    enhanced_matching_available = False
             
 from typing import Dict, List, Any, Optional
 

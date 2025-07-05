@@ -16,11 +16,11 @@ import requests
 # ────────────────────────────── CONFIG ──────────────────────────────────────
 CONFIG: Dict[str, Any] = {
     "sample_dir": Path("tests/audiobook_samples"),
-    "author_slug": "Hiiro Shimotsuki",
+    "author_slug": "Holly Jackson",
 
     # Query builder (ignored if custom_url is set)
     "filter_type": "author",          # "author" | "title"
-    "filter_value": "Hiiro Shimotsuki",
+    "filter_value": "Holly Jackson",
     "custom_url": None,              # drop a full API URL here to bypass building
     "num_results": 50,
     "marketplace": "US",
